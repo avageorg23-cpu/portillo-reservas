@@ -203,6 +203,7 @@
 
 <script>
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyncY88lVp2nDiCnV71Tp9KU7M3l0P8WhJLWhUpo8NPo97_H60p5SV6fq50N92u0FSSiA/exec";
+  const WHATSAPP_NUMBER = "5492616698473";
 
   const PRICES_ARS = { 
     "Apart 1": 75000, "Apart 2": 75000, "Apart 3": 85000, "Apart 4": 85000, 
@@ -410,8 +411,8 @@
       userForm.style.display = "flex";
       payBtn.style.display = "block";
       payBtn.classList.remove("disabled");
-      payBtn.textContent = "Confirmar y Pagar (Mercado Pago)";
-      payBtn.onclick = () => procesarReservaConMercadoPago(montoTotal);
+      payBtn.textContent = "Confirmar y Coordinar Pago (WhatsApp)";
+      payBtn.onclick = () => procesarReservaConWhatsApp(montoTotal);
       paypalContainer.style.display = "none";
     } else {
       document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal} USD`;
@@ -454,7 +455,7 @@
     }
   }
 
-  async function procesarReservaConMercadoPago(montoTotal) {
+  async function procesarReservaConWhatsApp(montoTotal) {
     const nombre = document.getElementById("cli-nombre").value.trim();
     const apellido = document.getElementById("cli-apellido").value.trim();
     const contacto = document.getElementById("cli-contacto").value.trim();
@@ -464,7 +465,7 @@
       payBtn.textContent = "¡Completá tus datos para continuar!";
       payBtn.style.background = "#b32a2a";
       setTimeout(() => {
-        payBtn.textContent = "Confirmar y Pagar (Mercado Pago)";
+        payBtn.textContent = "Confirmar y Coordinar Pago (WhatsApp)";
         payBtn.style.background = "#003366";
       }, 3000);
       return;
@@ -473,16 +474,14 @@
     payBtn.textContent = "Registrando reserva...";
     payBtn.classList.add("disabled");
 
-    // Registramos primero en Google Sheets
+    // Registra automáticamente en Google Sheets
     await enviarReservaAlServidor("ARS", montoTotal);
 
-    // Redirección dinámica automática a Mercado Pago con el monto exacto calculado
-    // Puedes cambiar la URL base por tu link de cobro de Mercado Pago o pasarela parametrizada
+    // Redirige a WhatsApp con los datos y monto exactos listos
     const room = document.getElementById("bungalow").value;
-    const concepto = encodeURIComponent("Reserva " + selection.nights + " noches en " + room);
+    const mensajeWp = encodeURIComponent(`Hola! Acabo de hacer la reserva de ${selection.nights} noches en ${room} (${fmtISO(selection.checkin)} al ${fmtISO(selection.checkout)}) por un total de $${montoTotal.toLocaleString('es-AR')} ARS. Mi nombre es ${nombre} ${apellido}.`);
     
-    // Aquí se abre el Checkout / Link dinámico en pesos con el monto calculado al vuelo
-    window.location.href = `https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=TU_PREFERENCE_ID_O_LINK_PAGO&amount=${montoTotal}&description=${concepto}`;
+    window.location.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeWp}`;
   }
 
   async function enviarReservaAlServidor(moneda, montoTotal) {

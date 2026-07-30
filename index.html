@@ -203,7 +203,6 @@
 
 <script>
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyncY88lVp2nDiCnV71Tp9KU7M3l0P8WhJLWhUpo8NPo97_H60p5SV6fq50N92u0FSSiA/exec";
-  const WHATSAPP_NUMBER = "5492616698473";
 
   const PRICES_ARS = { 
     "Apart 1": 75000, "Apart 2": 75000, "Apart 3": 85000, "Apart 4": 85000, 
@@ -411,7 +410,7 @@
       document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(montoTotal)}`;
       payBtn.style.display = "block";
       payBtn.classList.remove("disabled");
-      payBtn.textContent = "Confirmar y Coordinar Pago (WhatsApp)";
+      payBtn.textContent = "Pagar con Mercado Pago (ARS)";
       payBtn.onclick = () => procesarPagoARS(montoTotal);
       paypalContainer.style.display = "none";
     } else {
@@ -464,23 +463,50 @@
       payBtn.textContent = "¡Completá tus datos para continuar!";
       payBtn.style.background = "#b32a2a";
       setTimeout(() => {
-        payBtn.textContent = "Confirmar y Coordinar Pago (WhatsApp)";
+        payBtn.textContent = "Pagar con Mercado Pago (ARS)";
         payBtn.style.background = "#003366";
       }, 3000);
       return;
     }
 
-    payBtn.textContent = "Registrando reserva...";
+    payBtn.textContent = "Generando pago automatizado...";
     payBtn.classList.add("disabled");
 
-    // Guarda los datos de forma limpia y directa en Google Sheets
-    await enviarReservaAlServidor("ARS", montoTotal);
-
-    // Redirige al WhatsApp con el mensaje exacto conteniendo el monto, fechas y nombres
     const room = document.getElementById("bungalow").value;
-    const mensajeWp = encodeURIComponent(`Hola! Acabo de reservar ${selection.nights} noches en ${room} (${fmtISO(selection.checkin)} al ${fmtISO(selection.checkout)}) por un total de $${montoTotal.toLocaleString('es-AR')} ARS. Mi nombre es ${nombre} ${apellido}.`);
-    
-    window.location.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeWp}`;
+    const payload = {
+      bungalow: room,
+      checkin: selection.checkin,
+      checkout: selection.checkout,
+      nombre: nombre,
+      apellido: apellido,
+      contacto: contacto,
+      moneda: "ARS",
+      noches: selection.nights,
+      montoTotal: montoTotal
+    };
+
+    try {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+      });
+      
+      const result = await response.json();
+
+      if (result.status === "success" && result.init_point) {
+        // Redirige automáticamente a la pasarela oficial generada por tu Google Apps Script
+        window.location.href = result.init_point;
+      } else {
+        payBtn.textContent = "Error al generar pasarela. Reintentar";
+        payBtn.style.background = "#b32a2a";
+        payBtn.classList.remove("disabled");
+      }
+    } catch (e) {
+      console.error("Error:", e);
+      payBtn.textContent = "Error de conexión";
+      payBtn.classList.remove("disabled");
+    }
   }
 
   async function enviarReservaAlServidor(moneda, montoTotal) {

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Reservas Portillo Apartments</title>
 
+  <!-- SDK oficial de PayPal -->
+  <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD"></script>
+
   <style>
     * { box-sizing: border-box; }
 
@@ -131,6 +134,7 @@
       background: #003366; border: none; cursor: pointer;
     }
     #pay-btn.disabled{ opacity:.5; pointer-events:none; }
+    #paypal-button-container { margin-top: 12px; }
   </style>
 </head>
 
@@ -192,7 +196,8 @@
         <input type="tel" id="cli-contacto" placeholder="WhatsApp / Teléfono" required>
       </div>
 
-      <button id="pay-btn" type="button" class="disabled">Completar datos</button>
+      <div id="paypal-button-container" style="display:none;"></div>
+      <button id="pay-btn" type="button">Completar datos</button>
     </div>
   </div>
 
@@ -214,6 +219,7 @@
   let currentDate = new Date();
   const occupiedCache = new Map();
   let selection = { checkin: null, checkout: null, nights: 0 };
+  let paypalRendered = false;
 
   function fmtARS(n){
     return new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(n);
@@ -382,53 +388,70 @@
 
     const userForm = document.getElementById("user-data-form");
     const payBtn = document.getElementById("pay-btn");
+    const paypalContainer = document.getElementById("paypal-button-container");
 
     if (!checkout){
       document.getElementById("nights-info").textContent = `${room} · Ingreso: ${fmtISO(checkin)}`;
       document.getElementById("amount-info").textContent = `Elegí la fecha de salida.`;
       userForm.style.display = "none";
+      payBtn.style.display = "block";
       payBtn.classList.add("disabled");
+      payBtn.textContent = "Completar datos";
+      paypalContainer.style.display = "none";
       return;
     }
 
     document.getElementById("nights-info").textContent = `${room} · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
     
-    if (moneda === "ARS") {
-      const totalARS = nights * (PRICES_ARS[room] || 0);
-      document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(totalARS)}`;
-    } else {
-      const totalUSD = nights * (PRICES_USD[room] || 0);
-      document.getElementById("amount-info").textContent = `Total estimado (USD): $${totalUSD} USD`;
-    }
+    const montoTotal = moneda === "USD" ? nights * (PRICES_USD[room] || 70) : nights * (PRICES_ARS[room] || 75000);
     
-    userForm.style.display = "flex";
-    payBtn.classList.remove("disabled");
-    payBtn.textContent = "Confirmar y Reservar";
-    payBtn.onclick = processBookingAndRedirect;
+    if (moneda === "ARS") {
+      document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(montoTotal)}`;
+      userForm.style.display = "flex";
+      payBtn.style.display = "block";
+      payBtn.classList.remove("disabled");
+      payBtn.textContent = "Confirmar y Reservar (Mercado Pago)";
+      payBtn.onclick = () => procesarReserva("ARS", montoTotal);
+      paypalContainer.style.display = "none";
+    } else {
+      document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal} USD`;
+      userForm.style.display = "flex";
+      payBtn.style.display = "none"; // Ocultamos botón estático y usamos el SDK de PayPal
+      paypalContainer.style.display = "block";
+
+      if (!paypalRendered && window.paypal) {
+        paypalRendered = true;
+        paypal.Buttons({
+          createOrder: function(data, actions) {
+            const nombre = document.getElementById("cli-nombre").value.trim();
+            const apellido = document.getElementById("cli-apellido").value.trim();
+            const contacto = document.getElementById("cli-contacto").value.trim();
+            if (!nombre || !apellido || !contacto) {
+              alert("Por favor completá tu nombre, apellido y WhatsApp antes de pagar.");
+              throw new Error("Datos incompletos");
+            }
+            return actions.order.create({
+              purchase_units: [{
+                description: `Reserva de ${nights} noches en ${room}`,
+                amount: { value: montoTotal.toFixed(2) }
+              }]
+            });
+          },
+          onApprove: function(data, actions) {
+            return actions.order.capture().then(function(details) {
+              procesarReserva("USD", montoTotal);
+            });
+          }
+        }).render('#paypal-button-container');
+      }
+    }
   }
 
-  async function processBookingAndRedirect() {
+  async function procesarReserva(moneda, montoTotal) {
     const nombre = document.getElementById("cli-nombre").value.trim();
     const apellido = document.getElementById("cli-apellido").value.trim();
     const contacto = document.getElementById("cli-contacto").value.trim();
-    const payBtn = document.getElementById("pay-btn");
-
-    if (!nombre || !apellido || !contacto) {
-      payBtn.textContent = "¡Completá tus datos para continuar!";
-      payBtn.style.background = "#b32a2a";
-      setTimeout(() => {
-        payBtn.textContent = "Confirmar y Reservar";
-        payBtn.style.background = "#003366";
-      }, 3000);
-      return;
-    }
-
-    payBtn.textContent = "Registrando reserva...";
-    payBtn.classList.add("disabled");
-
-    const moneda = document.getElementById("moneda").value;
     const room = document.getElementById("bungalow").value;
-    const montoTotal = moneda === "USD" ? selection.nights * (PRICES_USD[room] || 70) : selection.nights * (PRICES_ARS[room] || 75000);
 
     const payload = {
       bungalow: room,
@@ -452,25 +475,18 @@
       const result = await response.json();
 
       if (result.status === "success") {
-        if (moneda === "USD") {
-          // REEMPLAZA "tu-correo-paypal@business.com" con tu correo real de PayPal Business
-          const businessEmail = "tu-correo-paypal@business.com"; 
-          const itemName = encodeURIComponent("Reserva de " + selection.nights + " noches en " + room);
-          
-          window.location.href = `https://www.paypal.com/checkoutnow?business=${businessEmail}&item_name=${itemName}&amount=${montoTotal.toFixed(2)}&currency_code=USD`;
-        } else {
+        if (moneda === "ARS") {
           window.location.href = "https://www.mercadopago.com.ar";
+        } else {
+          alert("¡Pago exitoso y reserva registrada con éxito!");
+          location.reload();
         }
       } else {
-        payBtn.textContent = "Error al procesar. Reintentar";
-        payBtn.style.background = "#b32a2a";
-        payBtn.classList.remove("disabled");
+        alert("Error al registrar la reserva en el sistema.");
       }
-
     } catch (e) {
       console.error("Error:", e);
-      payBtn.textContent = "Error de conexión";
-      payBtn.classList.remove("disabled");
+      alert("Error de conexión con el servidor.");
     }
   }
 

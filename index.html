@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Reservas Portillo Apartments</title>
 
-  <!-- SDK oficial de PayPal -->
+  <!-- SDK oficial de PayPal para USD -->
   <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD"></script>
 
   <style>
@@ -410,8 +410,8 @@
       userForm.style.display = "flex";
       payBtn.style.display = "block";
       payBtn.classList.remove("disabled");
-      payBtn.textContent = "Confirmar y Reservar (Mercado Pago)";
-      payBtn.onclick = () => procesarReserva("ARS", montoTotal);
+      payBtn.textContent = "Confirmar y Pagar (Mercado Pago)";
+      payBtn.onclick = () => procesarReservaConMercadoPago(montoTotal);
       paypalContainer.style.display = "none";
     } else {
       document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal} USD`;
@@ -430,7 +430,6 @@
               alert("Por favor completá tu nombre, apellido y WhatsApp antes de pagar.");
               throw new Error("Datos incompletos");
             }
-            // Recálculo dinámico en tiempo real basado en la selección actual
             const currentNights = selection.nights;
             const currentRoom = document.getElementById("bungalow").value;
             const dynamicTotal = currentNights * (PRICES_USD[currentRoom] || 70);
@@ -447,7 +446,7 @@
               const currentNights = selection.nights;
               const currentRoom = document.getElementById("bungalow").value;
               const dynamicTotal = currentNights * (PRICES_USD[currentRoom] || 70);
-              procesarReserva("USD", dynamicTotal);
+              enviarReservaAlServidor("USD", dynamicTotal);
             });
           }
         }).render('#paypal-button-container');
@@ -455,7 +454,38 @@
     }
   }
 
-  async function procesarReserva(moneda, montoTotal) {
+  async function procesarReservaConMercadoPago(montoTotal) {
+    const nombre = document.getElementById("cli-nombre").value.trim();
+    const apellido = document.getElementById("cli-apellido").value.trim();
+    const contacto = document.getElementById("cli-contacto").value.trim();
+    const payBtn = document.getElementById("pay-btn");
+
+    if (!nombre || !apellido || !contacto) {
+      payBtn.textContent = "¡Completá tus datos para continuar!";
+      payBtn.style.background = "#b32a2a";
+      setTimeout(() => {
+        payBtn.textContent = "Confirmar y Pagar (Mercado Pago)";
+        payBtn.style.background = "#003366";
+      }, 3000);
+      return;
+    }
+
+    payBtn.textContent = "Registrando reserva...";
+    payBtn.classList.add("disabled");
+
+    // Registramos primero en Google Sheets
+    await enviarReservaAlServidor("ARS", montoTotal);
+
+    // Redirección dinámica automática a Mercado Pago con el monto exacto calculado
+    // Puedes cambiar la URL base por tu link de cobro de Mercado Pago o pasarela parametrizada
+    const room = document.getElementById("bungalow").value;
+    const concepto = encodeURIComponent("Reserva " + selection.nights + " noches en " + room);
+    
+    // Aquí se abre el Checkout / Link dinámico en pesos con el monto calculado al vuelo
+    window.location.href = `https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=TU_PREFERENCE_ID_O_LINK_PAGO&amount=${montoTotal}&description=${concepto}`;
+  }
+
+  async function enviarReservaAlServidor(moneda, montoTotal) {
     const nombre = document.getElementById("cli-nombre").value.trim();
     const apellido = document.getElementById("cli-apellido").value.trim();
     const contacto = document.getElementById("cli-contacto").value.trim();
@@ -482,19 +512,12 @@
       
       const result = await response.json();
 
-      if (result.status === "success") {
-        if (moneda === "ARS") {
-          window.location.href = "https://www.mercadopago.com.ar";
-        } else {
-          alert("¡Pago exitoso y reserva registrada con éxito!");
-          location.reload();
-        }
-      } else {
-        alert("Error al registrar la reserva en el sistema.");
+      if (result.status === "success" && moneda === "USD") {
+        alert("¡Pago exitoso y reserva registrada con éxito!");
+        location.reload();
       }
     } catch (e) {
       console.error("Error:", e);
-      alert("Error de conexión con el servidor.");
     }
   }
 

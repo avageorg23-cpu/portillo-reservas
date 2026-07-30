@@ -7,8 +7,6 @@
 
   <!-- SDK oficial de PayPal para USD -->
   <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD"></script>
-  <!-- SDK oficial de Mercado Pago para ARS -->
-  <script src="https://sdk.mercadopago.com/js/v2"></script>
 
   <style>
     * { box-sizing: border-box; }
@@ -136,7 +134,7 @@
       background: #003366; border: none; cursor: pointer;
     }
     #pay-btn.disabled{ opacity:.5; pointer-events:none; }
-    #paypal-button-container, #mercadopago-button-container { margin-top: 12px; }
+    #paypal-button-container { margin-top: 12px; }
   </style>
 </head>
 
@@ -199,14 +197,12 @@
       </div>
 
       <div id="paypal-button-container" style="display:none;"></div>
-      <div id="mercadopago-button-container" style="display:none;"></div>
       <button id="pay-btn" type="button" class="disabled">Completar datos</button>
     </div>
   </div>
 
 <script>
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyncY88lVp2nDiCnV71Tp9KU7M3l0P8WhJLWhUpo8NPo97_H60p5SV6fq50N92u0FSSiA/exec";
-  const MP_PUBLIC_KEY = "APP_USR-tu-public-key-aqui";
 
   const PRICES_ARS = { 
     "Apart 1": 75000, "Apart 2": 75000, "Apart 3": 85000, "Apart 4": 85000, 
@@ -224,11 +220,6 @@
   const occupiedCache = new Map();
   let selection = { checkin: null, checkout: null, nights: 0 };
   let paypalInitialized = false;
-  let mpSdk = null;
-
-  if (window.MercadoPago) {
-    mpSdk = new MercadoPago(MP_PUBLIC_KEY, { locale: 'es-AR' });
-  }
 
   function fmtARS(n){
     return new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(n);
@@ -398,7 +389,6 @@
     const userForm = document.getElementById("user-data-form");
     const payBtn = document.getElementById("pay-btn");
     const paypalContainer = document.getElementById("paypal-button-container");
-    const mpContainer = document.getElementById("mercadopago-button-container");
 
     if (!checkout){
       document.getElementById("nights-info").textContent = `${room} · Ingreso: ${fmtISO(checkin)}`;
@@ -408,52 +398,24 @@
       payBtn.classList.add("disabled");
       payBtn.textContent = "Completar datos";
       paypalContainer.style.display = "none";
-      mpContainer.style.display = "none";
       return;
     }
 
     document.getElementById("nights-info").textContent = `${room} · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
     userForm.style.display = "flex";
 
+    const montoTotal = moneda === "USD" ? nights * (PRICES_USD[room] || 70) : nights * (PRICES_ARS[room] || 75000);
+
     if (moneda === "ARS") {
-      const totalARS = nights * (PRICES_ARS[room] || 75000);
-      document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(totalARS)}`;
-      payBtn.style.display = "none";
+      document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(montoTotal)}`;
+      payBtn.style.display = "block";
+      payBtn.classList.remove("disabled");
+      payBtn.textContent = "Pagar con Mercado Pago (ARS)";
+      payBtn.onclick = () => procesarPagoARS(montoTotal);
       paypalContainer.style.display = "none";
-      mpContainer.style.display = "block";
-
-      mpContainer.innerHTML = "";
-      if (mpSdk) {
-        mpSdk.bricks().create("wallet", "mercadopago-button-container", {
-          initialization: {
-            amount: totalARS,
-            preferenceId: null
-          },
-          callbacks: {
-            onReady: () => {},
-            onSubmit: async () => {
-              const nombre = document.getElementById("cli-nombre").value.trim();
-              const apellido = document.getElementById("cli-apellido").value.trim();
-              const contacto = document.getElementById("cli-contacto").value.trim();
-              if (!nombre || !apellido || !contacto) {
-                alert("Por favor completá tus datos antes de continuar.");
-                return false;
-              }
-              await enviarReservaAlServidor("ARS", totalARS);
-              return true;
-            },
-            onError: (error) => console.error(error)
-          }
-        });
-      } else {
-        mpContainer.innerHTML = "<p style='color:red; font-size:0.85rem;'>Configura tu MP_PUBLIC_KEY</p>";
-      }
-
     } else {
-      const totalUSD = nights * (PRICES_USD[room] || 70);
-      document.getElementById("amount-info").textContent = `Total estimado (USD): $${totalUSD} USD`;
+      document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal} USD`;
       payBtn.style.display = "none";
-      mpContainer.style.display = "none";
       paypalContainer.style.display = "block";
 
       if (!paypalInitialized && window.paypal) {
@@ -491,6 +453,37 @@
     }
   }
 
+  async function procesarPagoARS(montoTotal) {
+    const nombre = document.getElementById("cli-nombre").value.trim();
+    const apellido = document.getElementById("cli-apellido").value.trim();
+    const contacto = document.getElementById("cli-contacto").value.trim();
+    const payBtn = document.getElementById("pay-btn");
+
+    if (!nombre || !apellido || !contacto) {
+      payBtn.textContent = "¡Completá tus datos para continuar!";
+      payBtn.style.background = "#b32a2a";
+      setTimeout(() => {
+        payBtn.textContent = "Pagar con Mercado Pago (ARS)";
+        payBtn.style.background = "#003366";
+      }, 3000);
+      return;
+    }
+
+    payBtn.textContent = "Registrando reserva...";
+    payBtn.classList.add("disabled");
+
+    // Registra la reserva en Google Sheets
+    await enviarReservaAlServidor("ARS", montoTotal);
+
+    // Redirige al link de pago de Mercado Pago con el monto exacto y los datos listos
+    const room = document.getElementById("bungalow").value;
+    const detalle = encodeURIComponent(`Reserva ${selection.nights} noches en ${room} (${fmtISO(selection.checkin)} al ${fmtISO(selection.checkout)})`);
+    
+    // Aquí puedes colocar tu link base de cobro de Mercado Pago (por ejemplo, tu link de pago estándar de MP)
+    // El usuario paga de forma automatizada y el sistema ya guardó la fecha en el Google Sheet.
+    window.location.href = `https://link.mercadopago.com.ar/portilloapartments?amount=${montoTotal}&description=${detalle}`;
+  }
+
   async function enviarReservaAlServidor(moneda, montoTotal) {
     const nombre = document.getElementById("cli-nombre").value.trim();
     const apellido = document.getElementById("cli-apellido").value.trim();
@@ -518,7 +511,7 @@
       
       const result = await response.json();
 
-      if (result.status === "success") {
+      if (result.status === "success" && moneda === "USD") {
         alert("¡Pago exitoso y reserva registrada con éxito!");
         location.reload();
       }

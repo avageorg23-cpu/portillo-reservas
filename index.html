@@ -452,11 +452,12 @@
       const result = await response.json();
 
       if (result.status === "success") {
-        // Redirección limpia automatizada por navegador (Sin errores de API en Apps Script)
         if (moneda === "USD") {
-          const businessEmail = "tu-correo-paypal@business.com"; // Reemplaza con tu email de PayPal Business
-          const itemName = encodeURIComponent("Reserva " + selection.nights + " noches en " + room);
-          window.location.href = `https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=${businessEmail}&item_name=${itemName}&amount=${montoTotal.toFixed(2)}&currency_code=USD`;
+          // REEMPLAZA "tu-correo-paypal@business.com" con el correo electrónico real de tu cuenta PayPal Business
+          const businessEmail = "tu-correo-paypal@business.com"; 
+          const itemName = encodeURIComponent("Reserva de " + selection.nights + " noches en " + room);
+          
+          window.location.href = `https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=${businessEmail}&item_name=${itemName}&amount=${montoTotal.toFixed(2)}&currency_code=USD`;
         } else {
           window.location.href = "https://www.mercadopago.com.ar";
         }

@@ -197,7 +197,6 @@
   </div>
 
 <script>
-  const WHATSAPP_NUMBER = "5492616698473"; 
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyncY88lVp2nDiCnV71Tp9KU7M3l0P8WhJLWhUpo8NPo97_H60p5SV6fq50N92u0FSSiA/exec";
 
   const PRICES_ARS = { 
@@ -424,12 +423,12 @@
       return;
     }
 
-    payBtn.textContent = "Generando orden de pago...";
+    payBtn.textContent = "Registrando reserva...";
     payBtn.classList.add("disabled");
 
     const moneda = document.getElementById("moneda").value;
     const room = document.getElementById("bungalow").value;
-    const montoTotalUSD = selection.nights * (PRICES_USD[room] || 70);
+    const montoTotal = moneda === "USD" ? selection.nights * (PRICES_USD[room] || 70) : selection.nights * (PRICES_ARS[room] || 75000);
 
     const payload = {
       bungalow: room,
@@ -440,7 +439,7 @@
       contacto: contacto,
       moneda: moneda,
       noches: selection.nights,
-      montoTotalUSD: montoTotalUSD
+      montoTotal: montoTotal
     };
 
     try {
@@ -452,8 +451,15 @@
       
       const result = await response.json();
 
-      if (result.status === "success" && result.paymentUrl) {
-        window.top.location.href = result.paymentUrl;
+      if (result.status === "success") {
+        // Redirección limpia automatizada por navegador (Sin errores de API en Apps Script)
+        if (moneda === "USD") {
+          const businessEmail = "tu-correo-paypal@business.com"; // Reemplaza con tu email de PayPal Business
+          const itemName = encodeURIComponent("Reserva " + selection.nights + " noches en " + room);
+          window.location.href = `https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=${businessEmail}&item_name=${itemName}&amount=${montoTotal.toFixed(2)}&currency_code=USD`;
+        } else {
+          window.location.href = "https://www.mercadopago.com.ar";
+        }
       } else {
         payBtn.textContent = "Error al procesar. Reintentar";
         payBtn.style.background = "#b32a2a";

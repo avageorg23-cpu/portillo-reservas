@@ -219,7 +219,7 @@
   let currentDate = new Date();
   const occupiedCache = new Map();
   let selection = { checkin: null, checkout: null, nights: 0 };
-  let paypalRendered = false;
+  let paypalInitialized = false;
 
   function fmtARS(n){
     return new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(n);
@@ -416,11 +416,11 @@
     } else {
       document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal} USD`;
       userForm.style.display = "flex";
-      payBtn.style.display = "none"; // Ocultamos botón estático y usamos el SDK de PayPal
+      payBtn.style.display = "none"; 
       paypalContainer.style.display = "block";
 
-      if (!paypalRendered && window.paypal) {
-        paypalRendered = true;
+      if (!paypalInitialized && window.paypal) {
+        paypalInitialized = true;
         paypal.Buttons({
           createOrder: function(data, actions) {
             const nombre = document.getElementById("cli-nombre").value.trim();
@@ -430,16 +430,24 @@
               alert("Por favor completá tu nombre, apellido y WhatsApp antes de pagar.");
               throw new Error("Datos incompletos");
             }
+            // Recálculo dinámico en tiempo real basado en la selección actual
+            const currentNights = selection.nights;
+            const currentRoom = document.getElementById("bungalow").value;
+            const dynamicTotal = currentNights * (PRICES_USD[currentRoom] || 70);
+
             return actions.order.create({
               purchase_units: [{
-                description: `Reserva de ${nights} noches en ${room}`,
-                amount: { value: montoTotal.toFixed(2) }
+                description: `Reserva de ${currentNights} noches en ${currentRoom}`,
+                amount: { value: dynamicTotal.toFixed(2) }
               }]
             });
           },
           onApprove: function(data, actions) {
             return actions.order.capture().then(function(details) {
-              procesarReserva("USD", montoTotal);
+              const currentNights = selection.nights;
+              const currentRoom = document.getElementById("bungalow").value;
+              const dynamicTotal = currentNights * (PRICES_USD[currentRoom] || 70);
+              procesarReserva("USD", dynamicTotal);
             });
           }
         }).render('#paypal-button-container');

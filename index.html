@@ -203,6 +203,7 @@
 
 <script>
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyncY88lVp2nDiCnV71Tp9KU7M3l0P8WhJLWhUpo8NPo97_H60p5SV6fq50N92u0FSSiA/exec";
+  const WHATSAPP_NUMBER = "5492616698473";
 
   const PRICES_ARS = { 
     "Apart 1": 75000, "Apart 2": 75000, "Apart 3": 85000, "Apart 4": 85000, 
@@ -410,7 +411,7 @@
       document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(montoTotal)}`;
       payBtn.style.display = "block";
       payBtn.classList.remove("disabled");
-      payBtn.textContent = "Pagar con Mercado Pago (ARS)";
+      payBtn.textContent = "Confirmar y Coordinar Pago (WhatsApp)";
       payBtn.onclick = () => procesarPagoARS(montoTotal);
       paypalContainer.style.display = "none";
     } else {
@@ -463,7 +464,7 @@
       payBtn.textContent = "¡Completá tus datos para continuar!";
       payBtn.style.background = "#b32a2a";
       setTimeout(() => {
-        payBtn.textContent = "Pagar con Mercado Pago (ARS)";
+        payBtn.textContent = "Confirmar y Coordinar Pago (WhatsApp)";
         payBtn.style.background = "#003366";
       }, 3000);
       return;
@@ -472,16 +473,14 @@
     payBtn.textContent = "Registrando reserva...";
     payBtn.classList.add("disabled");
 
-    // Registra la reserva en Google Sheets
+    // Guarda los datos de forma limpia y directa en Google Sheets
     await enviarReservaAlServidor("ARS", montoTotal);
 
-    // Redirige al link de pago de Mercado Pago con el monto exacto y los datos listos
+    // Redirige al WhatsApp con el mensaje exacto conteniendo el monto, fechas y nombres
     const room = document.getElementById("bungalow").value;
-    const detalle = encodeURIComponent(`Reserva ${selection.nights} noches en ${room} (${fmtISO(selection.checkin)} al ${fmtISO(selection.checkout)})`);
+    const mensajeWp = encodeURIComponent(`Hola! Acabo de reservar ${selection.nights} noches en ${room} (${fmtISO(selection.checkin)} al ${fmtISO(selection.checkout)}) por un total de $${montoTotal.toLocaleString('es-AR')} ARS. Mi nombre es ${nombre} ${apellido}.`);
     
-    // Aquí puedes colocar tu link base de cobro de Mercado Pago (por ejemplo, tu link de pago estándar de MP)
-    // El usuario paga de forma automatizada y el sistema ya guardó la fecha en el Google Sheet.
-    window.location.href = `https://link.mercadopago.com.ar/portilloapartments?amount=${montoTotal}&description=${detalle}`;
+    window.location.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${mensajeWp}`;
   }
 
   async function enviarReservaAlServidor(moneda, montoTotal) {

@@ -453,12 +453,11 @@
 
       if (result.status === "success") {
         if (moneda === "USD") {
-          // REEMPLAZA "tu-correo-paypal@business.com" con tu email de PayPal Business
+          // REEMPLAZA "tu-correo-paypal@business.com" con tu correo real de PayPal Business
           const businessEmail = "tu-correo-paypal@business.com"; 
           const itemName = encodeURIComponent("Reserva de " + selection.nights + " noches en " + room);
           
-          // Endpoint comercial estándar (_xclick) con monto y descripción calculados al vuelo
-          window.location.href = `https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=${businessEmail}&item_name=${itemName}&amount=${montoTotal.toFixed(2)}&currency_code=USD`;
+          window.location.href = `https://www.paypal.com/checkoutnow?business=${businessEmail}&item_name=${itemName}&amount=${montoTotal.toFixed(2)}&currency_code=USD`;
         } else {
           window.location.href = "https://www.mercadopago.com.ar";
         }

@@ -206,8 +206,6 @@
 
 <script>
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyncY88lVp2nDiCnV71Tp9KU7M3l0P8WhJLWhUpo8NPo97_H60p5SV6fq50N92u0FSSiA/exec";
-  
-  // Reemplaza con tu Public Key de Mercado Pago (empieza con TEST- o APP_USR-)
   const MP_PUBLIC_KEY = "APP_USR-tu-public-key-aqui";
 
   const PRICES_ARS = { 
@@ -228,7 +226,6 @@
   let paypalInitialized = false;
   let mpSdk = null;
 
-  // Inicializar Mercado Pago SDK
   if (window.MercadoPago) {
     mpSdk = new MercadoPago(MP_PUBLIC_KEY, { locale: 'es-AR' });
   }
@@ -425,14 +422,12 @@
       paypalContainer.style.display = "none";
       mpContainer.style.display = "block";
 
-      // Renderizar o actualizar botón de Mercado Pago en Pesos
-      mpContainer.innerHTML = ""; // Limpiar anterior
+      mpContainer.innerHTML = "";
       if (mpSdk) {
         mpSdk.bricks().create("wallet", "mercadopago-button-container", {
           initialization: {
-            // El monto calculado dinámicamente viaja al checkout
             amount: totalARS,
-            preferenceId: null // Se genera al vuelo o se vincula mediante endpoint
+            preferenceId: null
           },
           callbacks: {
             onReady: () => {},
@@ -527,7 +522,7 @@
         alert("¡Pago exitoso y reserva registrada con éxito!");
         location.reload();
       }
-    }(e) {
+    } catch (e) {
       console.error("Error:", e);
     }
   }

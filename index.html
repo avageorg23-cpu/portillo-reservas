@@ -129,11 +129,11 @@
     .user-form input { padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
 
     #pay-btn{
-      display:block; width:100%; margin-top: 10px; font-weight: 900; font-size: 0.9rem;
+      display:block; width:100%; margin-top: 10px; font-weight: 900; font-size: 1rem;
       padding: 12px; border-radius: 999px; text-align:center; color:#fff;
-      background: #003366; border: none; cursor: pointer; word-break: break-all;
+      background: #003366; border: none; cursor: pointer;
     }
-    #pay-btn.disabled{ opacity:.8; }
+    #pay-btn.disabled{ opacity:.5; pointer-events:none; }
     #paypal-button-container { margin-top: 12px; }
   </style>
 </head>
@@ -202,7 +202,7 @@
   </div>
 
 <script>
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyncY88lVp2nDiCnV71Tp9KU7M3l0P8WhJLWhUpo8NPo97_H60p5SV6fq50N92u0FSSiA/exec";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH61JMbyMvV2lg2WQ2hPmCFwbAWcEQtWQAPoGBcTCTVpX-3in2aIIqNB1xTEkg02Q2ig/exec";
 
   const PRICES_ARS = { 
     "Apart 1": 75000, "Apart 2": 75000, "Apart 3": 85000, "Apart 4": 85000, 

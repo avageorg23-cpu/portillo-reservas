@@ -129,11 +129,11 @@
     .user-form input { padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
 
     #pay-btn{
-      display:block; width:100%; margin-top: 10px; font-weight: 900; font-size: 1rem;
+      display:block; width:100%; margin-top: 10px; font-weight: 900; font-size: 0.9rem;
       padding: 12px; border-radius: 999px; text-align:center; color:#fff;
-      background: #003366; border: none; cursor: pointer;
+      background: #003366; border: none; cursor: pointer; word-break: break-all;
     }
-    #pay-btn.disabled{ opacity:.5; pointer-events:none; }
+    #pay-btn.disabled{ opacity:.8; }
     #paypal-button-container { margin-top: 12px; }
   </style>
 </head>
@@ -495,17 +495,16 @@
       const result = await response.json();
 
       if (result.status === "success" && result.init_point) {
-        // Redirige automáticamente a la pasarela oficial generada por tu Google Apps Script
         window.location.href = result.init_point;
       } else {
-        payBtn.textContent = "Error al generar pasarela. Reintentar";
+        console.error("Detalle del error:", result.message);
+        payBtn.textContent = result.message ? result.message : "Error desconocido en pasarela";
         payBtn.style.background = "#b32a2a";
-        payBtn.classList.remove("disabled");
       }
     } catch (e) {
       console.error("Error:", e);
-      payBtn.textContent = "Error de conexión";
-      payBtn.classList.remove("disabled");
+      payBtn.textContent = "Error de conexión con el servidor";
+      payBtn.style.background = "#b32a2a";
     }
   }
 

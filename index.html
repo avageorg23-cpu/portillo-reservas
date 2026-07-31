@@ -283,8 +283,10 @@
     });
   }
 
-  async function loadOccupiedForRoom(room){
-    if (occupiedCache.has(room)) return occupiedCache.get(room);
+  async function loadOccupiedForRoom(room, forceRefresh = false){
+    if (!forceRefresh && occupiedCache.has(room)) {
+      return occupiedCache.get(room);
+    }
     try {
       const r = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(room)}`, { cache: "no-store" });
       const rows = await r.json();
@@ -305,9 +307,10 @@
   async function loadAvailabilityData(){
     const room = document.getElementById("bungalow").value;
     const body = document.getElementById("calendar-body");
-    body.innerHTML = "<tr><td colspan='7'>Cargando...</td></tr>";
-
-    let occupied = await loadOccupiedForRoom(room);
+    
+    // Usamos caché local al instante para máxima velocidad
+    let occupied = occupiedCache.get(room) || new Set();
+    
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
@@ -339,6 +342,17 @@
     }
     if (row.children.length > 0) body.appendChild(row);
     updatePriceLine();
+
+    // Sincronización silenciosa en segundo plano
+    loadOccupiedForRoom(room, true).then(freshOccupied => {
+      freshOccupied.forEach(iso => {
+        const td = document.querySelector(`td[data-fecha="${iso}"]`);
+        if (td && !td.classList.contains("checkin") && !td.classList.contains("checkout")) {
+          td.className = "unavailable";
+          td.onclick = null;
+        }
+      });
+    });
   }
 
   function changeMonth(offset){
@@ -548,7 +562,6 @@
     }
   }
 
-  // Validación de retorno exitoso de Mercado Pago
   window.addEventListener("DOMContentLoaded", () => {
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get("status");

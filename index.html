@@ -285,17 +285,21 @@
 
   async function loadOccupiedForRoom(room){
     if (occupiedCache.has(room)) return occupiedCache.get(room);
-    const r = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(room)}`, { cache: "no-store" });
-    const rows = await r.json();
-    const occupied = new Set();
-    
-    for (let i = 1; i < rows.length; i++){
-      const rr = rows[i];
-      if (!rr || rr.length === 0) continue;
-      if (rr[0]) occupied.add(String(rr[0]).trim());
+    try {
+      const r = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(room)}`, { cache: "no-store" });
+      const rows = await r.json();
+      const occupied = new Set();
+      for (let i = 1; i < rows.length; i++){
+        const rr = rows[i];
+        if (!rr || rr.length === 0) continue;
+        if (rr[0]) occupied.add(String(rr[0]).trim());
+      }
+      occupiedCache.set(room, occupied);
+      return occupied;
+    } catch (e) {
+      console.error("Error cargando disponibilidad:", e);
+      return new Set();
     }
-    occupiedCache.set(room, occupied);
-    return occupied;
   }
 
   async function loadAvailabilityData(){
@@ -303,7 +307,7 @@
     const body = document.getElementById("calendar-body");
     body.innerHTML = "<tr><td colspan='7'>Cargando...</td></tr>";
 
-    let occupied = await loadOccupiedForRoom(room).catch(() => new Set());
+    let occupied = await loadOccupiedForRoom(room);
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1).getDay();

@@ -548,7 +548,17 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
+  // Validación de retorno exitoso de Mercado Pago
+  window.addEventListener("DOMContentLoaded", () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get("status");
+    const ref = urlParams.get("ref");
+
+    if (status === "success") {
+      alert("¡Pago aprobado con éxito! Tu seña ha sido registrada correctamente. Referencia: " + (ref || "N/A"));
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     document.getElementById("bungalow").addEventListener("change", loadAvailabilityData);
     document.getElementById("moneda").addEventListener("change", updatePriceLine);
     loadAvailabilityData();

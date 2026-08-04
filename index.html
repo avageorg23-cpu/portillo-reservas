@@ -21,6 +21,7 @@
       margin: 0; 
       padding: 0;
       font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background-image: linear-gradient(rgba(18, 18, 18, 0.5), rgba(18, 18, 18, 0.7)), url('https://lh3.googleusercontent.com/d/17KYey5qeqhP_eaIKCG-K6PE-FIS48ci9');
       background-size: cover; 
       background-position: center; 
       background-repeat: no-repeat;
@@ -308,7 +309,6 @@
     const room = document.getElementById("bungalow").value;
     const body = document.getElementById("calendar-body");
     
-    // Renderizado instantáneo con caché local
     let occupied = occupiedCache.get(room) || new Set();
     
     const year = currentDate.getFullYear();
@@ -343,7 +343,6 @@
     if (row.children.length > 0) body.appendChild(row);
     updatePriceLine();
 
-    // Sincronización silenciosa en segundo plano
     loadOccupiedForRoom(room, true).then(freshOccupied => {
       freshOccupied.forEach(iso => {
         const td = document.querySelector(`td[data-fecha="${iso}"]`);
@@ -360,7 +359,6 @@
     loadAvailabilityData();
   }
 
-  // Validación ejecutada 100% en memoria local (Cero demoras de red al hacer clic)
   function onDayClick(isoDate){
     const room = document.getElementById("bungalow").value;
     const occupied = occupiedCache.get(room) || new Set();
@@ -583,7 +581,6 @@
 
     document.getElementById("moneda").addEventListener("change", updatePriceLine);
     
-    // Precarga inicial y renderizado instantáneo
     loadOccupiedForRoom(bungalowSelect.value).then(() => {
       loadAvailabilityData();
     });

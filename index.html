@@ -161,9 +161,10 @@
         </select>
       </span>
       
-      <span class="select-wrap">
+      <!-- Wrap del selector de pasajeros con ID para poder ocultarlo -->
+      <span class="select-wrap" id="wrap-pasajeros" style="display: none;">
         <select id="pasajeros">
-          <!-- Las opciones se generarán solas mediante JavaScript -->
+          <!-- Las opciones se generarán solas -->
         </select>
       </span>
 
@@ -175,7 +176,7 @@
       </span>
     </div>
 
-    <div id="price-line" class="price-line">Cargando precios...</div>
+    <div id="price-line" class="price-line">Calculando...</div>
 
     <div class="calendar-nav">
       <button type="button" onclick="changeMonth(-1)">Mes anterior</button>
@@ -212,46 +213,68 @@
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH61JMbyMvV2lg2WQ2hPmCFwbAWcEQtWQAPoGBcTCTVpX-3in2aIIqNB1xTEkg02Q2ig/exec";
   const TIPO_CAMBIO_USD = 1000; 
 
-  let preciosDinámicos = {}; 
+  // SALVAVIDAS: Precios cargados por defecto para que la página funcione INMEDIATAMENTE
+  // Si luego el Apps Script contesta con éxito, estos valores se sobreescriben.
+  const preciosFallback = {
+    "Apart 1": { "2": 53000 },
+    "Apart 2": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
+    "Apart 3": { "2": 60000 },
+    "Apart 4": { "2": 63000 },
+    "Apart 6": { "2": 60000 },
+    "Apart 11": { "2": 53000 },
+    "Apart 12": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
+    "Apart 14": { "2": 58000 },
+    "Apart 15": { "2": 63000, "3": 80000, "4": 95000 },
+    "Apart 16": { "2": 56000 },
+    "Apart 17": { "2": 57000 }
+  };
+
+  let preciosDinámicos = JSON.parse(JSON.stringify(preciosFallback)); 
+  
   let currentDate = new Date();
   const occupiedCache = new Map();
   let selection = { checkin: null, checkout: null, nights: 0 };
   let paypalInitialized = false;
 
-  // Límite de capacidad según el departamento
+  // Límite de capacidad (los que no están acá asumen máximo 2)
   const capacidadesMaximas = {
     "Apart 2": 5,
     "Apart 12": 5,
     "Apart 15": 4
   };
 
-  // Función para actualizar las opciones de pasajeros
+  // Función para actualizar las opciones de pasajeros y OCULTAR el menú si es fijo
   function actualizarOpcionesPasajeros() {
     const room = document.getElementById("bungalow").value;
     const paxSelect = document.getElementById("pasajeros");
+    const wrapPasajeros = document.getElementById("wrap-pasajeros");
     
-    // Si está en nuestra lista usa ese máximo, sino por defecto asume 2
     const maxPax = capacidadesMaximas[room] || 2; 
-
-    // Guardamos lo que tenía seleccionado el usuario por si cambia de apart
     let valorActual = parseInt(paxSelect.value) || 2; 
 
-    // Limpiamos las opciones actuales
+    // Limpiamos
     paxSelect.innerHTML = "";
 
-    // Armamos las nuevas opciones
-    for (let i = 1; i <= maxPax; i++) {
+    if (maxPax === 2) {
+      // TARIFA PLANA: Ocultamos el botón porque no aporta nada elegir personas
+      wrapPasajeros.style.display = "none";
       const option = document.createElement("option");
-      option.value = i;
-      option.textContent = i === 1 ? "1 Persona" : `${i} Personas`;
+      option.value = 2;
+      option.textContent = "2 Personas";
       paxSelect.appendChild(option);
-    }
-
-    // Si el valor que tenía antes es mayor al nuevo máximo, lo bajamos al máximo permitido
-    if (valorActual > maxPax) {
-      paxSelect.value = maxPax;
+      paxSelect.value = 2;
     } else {
-      paxSelect.value = valorActual;
+      // TARIFA VARIABLE: Mostramos el botón, arrancando siempre desde 2
+      wrapPasajeros.style.display = "inline-block";
+      for (let i = 2; i <= maxPax; i++) {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = `${i} Personas`;
+        paxSelect.appendChild(option);
+      }
+      
+      if (valorActual < 2) valorActual = 2;
+      paxSelect.value = valorActual > maxPax ? maxPax : valorActual;
     }
 
     updatePriceLine();
@@ -286,15 +309,19 @@
 
     if (el) {
       if (precioArs === 0) {
-        el.textContent = "Obteniendo tarifas...";
+        el.textContent = "Revisá los precios de este Apart";
         return;
       }
 
+      // Si el select está oculto (tarifa plana), no mostramos "(2 pax)" para que quede más limpio
+      const isFixed = document.getElementById("wrap-pasajeros").style.display === "none";
+      const textoPax = isFixed ? "" : ` (${pax} pax)`;
+
       if (moneda === "ARS") {
-        el.textContent = `${room} (${pax} pax) · ${fmtARS(precioArs)} por noche`;
+        el.textContent = `${room}${textoPax} · ${fmtARS(precioArs)} por noche`;
       } else {
         const precioUsd = (precioArs / TIPO_CAMBIO_USD).toFixed(0);
-        el.textContent = `${room} (${pax} pax) · $${precioUsd} USD por noche`;
+        el.textContent = `${room}${textoPax} · $${precioUsd} USD por noche`;
       }
     }
     updateSummary(); 
@@ -304,11 +331,16 @@
     try {
       const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
       const data = await response.json();
-      preciosDinámicos = data;
-      updatePriceLine();
+      
+      // Solo sobreescribimos si el Excel nos devolvió datos válidos
+      if (data && Object.keys(data).length > 0) {
+        preciosDinámicos = data;
+        updatePriceLine();
+      }
     } catch (e) {
-      console.error("Error al cargar los precios", e);
-      document.getElementById("price-line").textContent = "Error al cargar tarifas";
+      // Si falla la conexión (por permisos o red), usamos el salvavidas
+      console.warn("No se pudo leer el Excel. Usando precios de respaldo.", e);
+      updatePriceLine(); 
     }
   }
 
@@ -373,7 +405,7 @@
       occupiedCache.set(room, occupied);
       return occupied;
     } catch (e) {
-      console.error("Error cargando disponibilidad:", e);
+      console.warn("Error cargando disponibilidad:", e);
       return new Set();
     }
   }
@@ -481,8 +513,11 @@
     const payBtn = document.getElementById("pay-btn");
     const paypalContainer = document.getElementById("paypal-button-container");
 
+    const isFixed = document.getElementById("wrap-pasajeros").style.display === "none";
+    const textoPax = isFixed ? "" : ` (${pax} pax)`;
+
     if (!checkout){
-      document.getElementById("nights-info").textContent = `${room} · Ingreso: ${fmtISO(checkin)}`;
+      document.getElementById("nights-info").textContent = `${room}${textoPax} · Ingreso: ${fmtISO(checkin)}`;
       document.getElementById("amount-info").textContent = `Elegí la fecha de salida.`;
       userForm.style.display = "none";
       payBtn.style.display = "block";
@@ -492,7 +527,7 @@
       return;
     }
 
-    document.getElementById("nights-info").textContent = `${room} (${pax} pax) · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
+    document.getElementById("nights-info").textContent = `${room}${textoPax} · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
     userForm.style.display = "flex";
 
     const precioBase = obtenerPrecioBase();
@@ -649,8 +684,10 @@
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    // Al cargar la página, armamos los pasajeros para el primer depto de la lista
+    // Inicializamos con el primer departamento
     actualizarOpcionesPasajeros();
+    
+    // Y probamos de forma asíncrona si el Excel responde
     cargarPreciosDesdeSheet();
 
     const bungalowSelect = document.getElementById("bungalow");
@@ -658,7 +695,7 @@
       selection = { checkin: null, checkout: null, nights: 0 };
       document.getElementById("payment-section").style.display = "none";
       
-      // Aca disparamos el cambio de capacidad al elegir otro apart
+      // Ajustamos pasajeros al cambiar de cuarto
       actualizarOpcionesPasajeros();
       
       loadAvailabilityData();

@@ -64,14 +64,14 @@
     select{
       -webkit-appearance:none;
       appearance:none;
-      padding: 11px 44px 11px 14px;
+      padding: 11px 36px 11px 14px;
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,0.25);
       background: rgba(0,0,0,0.4);
       color:#fff;
       font-size: clamp(.92rem, 2.5vw, .95rem);
       font-weight:800;
-      min-width: min(200px, 92vw);
+      min-width: min(160px, 92vw);
       outline:none;
       box-shadow: 0 8px 18px rgba(0,0,0,0.22);
     }
@@ -147,11 +147,11 @@
     <div class="top-row">
       <span class="select-wrap">
         <select id="bungalow">
+          <!-- Apart 5 fue eliminado -->
           <option value="Apart 1">Apart 1</option>
           <option value="Apart 2">Apart 2</option>
           <option value="Apart 3">Apart 3</option>
           <option value="Apart 4">Apart 4</option>
-          <option value="Apart 5">Apart 5</option>
           <option value="Apart 6">Apart 6</option>
           <option value="Apart 11">Apart 11</option>
           <option value="Apart 12">Apart 12</option>
@@ -161,6 +161,18 @@
           <option value="Apart 16">Apart 16</option>
         </select>
       </span>
+      
+      <!-- Nuevo selector de pasajeros -->
+      <span class="select-wrap">
+        <select id="pasajeros">
+          <option value="1">1 Persona</option>
+          <option value="2" selected>2 Personas</option>
+          <option value="3">3 Personas</option>
+          <option value="4">4 Personas</option>
+          <option value="5">5 Personas</option>
+        </select>
+      </span>
+
       <span class="select-wrap">
         <select id="moneda">
           <option value="ARS">Pesos ARS (Seña)</option>
@@ -169,7 +181,7 @@
       </span>
     </div>
 
-    <div id="price-line" class="price-line"></div>
+    <div id="price-line" class="price-line">Cargando precios...</div>
 
     <div class="calendar-nav">
       <button type="button" onclick="changeMonth(-1)">Mes anterior</button>
@@ -204,18 +216,9 @@
 
 <script>
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH61JMbyMvV2lg2WQ2hPmCFwbAWcEQtWQAPoGBcTCTVpX-3in2aIIqNB1xTEkg02Q2ig/exec";
+  const TIPO_CAMBIO_USD = 1000; // Tasa de cambio para calcular el USD dinámico
 
-  const PRICES_ARS = { 
-    "Apart 1": 75000, "Apart 2": 75000, "Apart 3": 85000, "Apart 4": 85000, 
-    "Apart 5": 90000, "Apart 6": 90000, "Apart 11": 100000, "Apart 12": 100000, 
-    "Apart 17": 110000, "Apart 14": 110000, "Apart 15": 120000, "Apart 16": 120000 
-  };
-
-  const PRICES_USD = { 
-    "Apart 1": 70, "Apart 2": 70, "Apart 3": 80, "Apart 4": 80, 
-    "Apart 5": 90, "Apart 6": 90, "Apart 11": 100, "Apart 12": 100, 
-    "Apart 17": 110, "Apart 14": 110, "Apart 15": 120, "Apart 16": 120 
-  };
+  let preciosDinámicos = {}; // Aquí guardaremos los precios que vengan del Excel
   
   let currentDate = new Date();
   const occupiedCache = new Map();
@@ -226,19 +229,65 @@
     return new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(n);
   }
 
+  // Obtenemos el precio calculando Habitación + Cantidad de pasajeros
+  function obtenerPrecioBase() {
+    const room = document.getElementById("bungalow").value;
+    const pax = document.getElementById("pasajeros").value;
+    
+    // Si no hay precios cargados todavía, devolvemos 0
+    if (!preciosDinámicos[room]) return 0;
+
+    // Buscamos el precio para esa cantidad de personas. Si piden 4 y el max es 2, aplicamos el máximo disponible.
+    let precio = preciosDinámicos[room][pax];
+    if (!precio) {
+      // Encuentra el valor máximo disponible en la tabla para esa habitación
+      const capacidades = Object.keys(preciosDinámicos[room]);
+      const maxCapacidad = Math.max(...capacidades);
+      precio = preciosDinámicos[room][maxCapacidad];
+    }
+    
+    return precio;
+  }
+
   function updatePriceLine(){
     const room = document.getElementById("bungalow").value;
     const moneda = document.getElementById("moneda").value;
+    const pax = document.getElementById("pasajeros").value;
     const el = document.getElementById("price-line");
+    
+    const precioArs = obtenerPrecioBase();
+
     if (el) {
-      if (moneda === "ARS") {
-        el.textContent = `${room} · ${fmtARS(PRICES_ARS[room] || 0)} por noche`;
-      } else {
-        el.textContent = `${room} · $${PRICES_USD[room] || 0} USD por noche`;
+      if (precioArs === 0) {
+        el.textContent = "Obteniendo tarifas...";
+        return;
       }
+
+      if (moneda === "ARS") {
+        el.textContent = `${room} (${pax} pax) · ${fmtARS(precioArs)} por noche`;
+      } else {
+        const precioUsd = (precioArs / TIPO_CAMBIO_USD).toFixed(0);
+        el.textContent = `${room} (${pax} pax) · $${precioUsd} USD por noche`;
+      }
+    }
+    // Si ya seleccionaron fechas, actualizamos el resumen abajo
+    updateSummary(); 
+  }
+
+  // --- CONEXIÓN AL GOOGLE SHEET PARA TRAER PRECIOS ---
+  async function cargarPreciosDesdeSheet() {
+    try {
+      const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
+      const data = await response.json();
+      preciosDinámicos = data;
+      updatePriceLine();
+    } catch (e) {
+      console.error("Error al cargar los precios", e);
+      document.getElementById("price-line").textContent = "Error al cargar tarifas";
     }
   }
 
+  // Resto de funciones del calendario (iguales a las que tenías)
   function toISO(dateObj){
     const y = dateObj.getFullYear();
     const m = String(dateObj.getMonth()+1).padStart(2,"0");
@@ -399,6 +448,7 @@
     const { checkin, checkout, nights } = selection;
     const room = document.getElementById("bungalow").value;
     const moneda = document.getElementById("moneda").value;
+    const pax = document.getElementById("pasajeros").value;
     
     if (!checkin) { document.getElementById("payment-section").style.display = "none"; return; }
     document.getElementById("payment-section").style.display = "block";
@@ -418,12 +468,14 @@
       return;
     }
 
-    document.getElementById("nights-info").textContent = `${room} · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
+    document.getElementById("nights-info").textContent = `${room} (${pax} pax) · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
     userForm.style.display = "flex";
 
-    const montoTotal = moneda === "USD" ? nights * (PRICES_USD[room] || 70) : nights * (PRICES_ARS[room] || 75000);
-
+    // Calculamos el total con el precio extraído del Excel
+    const precioBase = obtenerPrecioBase();
+    
     if (moneda === "ARS") {
+      const montoTotal = nights * precioBase;
       document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(montoTotal)}`;
       payBtn.style.display = "block";
       payBtn.classList.remove("disabled");
@@ -431,7 +483,9 @@
       payBtn.onclick = () => procesarPagoARS(montoTotal);
       paypalContainer.style.display = "none";
     } else {
-      document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal} USD`;
+      const precioBaseUSD = parseFloat((precioBase / TIPO_CAMBIO_USD).toFixed(2));
+      const montoTotal = nights * precioBaseUSD;
+      document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal.toFixed(2)} USD`;
       payBtn.style.display = "none";
       paypalContainer.style.display = "block";
 
@@ -446,23 +500,21 @@
               alert("Por favor completá tu nombre, apellido y WhatsApp antes de pagar.");
               throw new Error("Datos incompletos");
             }
+            // Recalculamos al instante por seguridad
             const currentNights = selection.nights;
-            const currentRoom = document.getElementById("bungalow").value;
-            const dynamicTotal = currentNights * (PRICES_USD[currentRoom] || 70);
+            const currentTotal = currentNights * parseFloat((obtenerPrecioBase() / TIPO_CAMBIO_USD).toFixed(2));
 
             return actions.order.create({
               purchase_units: [{
-                description: `Reserva de ${currentNights} noches en ${currentRoom}`,
-                amount: { value: dynamicTotal.toFixed(2) }
+                description: `Reserva de ${currentNights} noches en ${room} (${pax} pax)`,
+                amount: { value: currentTotal.toFixed(2) }
               }]
             });
           },
           onApprove: function(data, actions) {
             return actions.order.capture().then(function(details) {
-              const currentNights = selection.nights;
-              const currentRoom = document.getElementById("bungalow").value;
-              const dynamicTotal = currentNights * (PRICES_USD[currentRoom] || 70);
-              enviarReservaAlServidor("USD", dynamicTotal);
+              const currentTotal = selection.nights * parseFloat((obtenerPrecioBase() / TIPO_CAMBIO_USD).toFixed(2));
+              enviarReservaAlServidor("USD", currentTotal);
             });
           }
         }).render('#paypal-button-container');
@@ -490,8 +542,10 @@
     payBtn.classList.add("disabled");
 
     const room = document.getElementById("bungalow").value;
+    const pax = document.getElementById("pasajeros").value;
     const payload = {
       bungalow: room,
+      pasajeros: pax, // Enviamos este dato también por si lo necesitas en el panel
       checkin: selection.checkin,
       checkout: selection.checkout,
       nombre: nombre,
@@ -530,9 +584,11 @@
     const apellido = document.getElementById("cli-apellido").value.trim();
     const contacto = document.getElementById("cli-contacto").value.trim();
     const room = document.getElementById("bungalow").value;
+    const pax = document.getElementById("pasajeros").value;
 
     const payload = {
       bungalow: room,
+      pasajeros: pax,
       checkin: selection.checkin,
       checkout: selection.checkout,
       nombre: nombre,
@@ -571,12 +627,20 @@
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
+    // Iniciamos pidiendo los precios al Excel de fondo
+    cargarPreciosDesdeSheet();
+
     const bungalowSelect = document.getElementById("bungalow");
     bungalowSelect.addEventListener("change", () => {
       selection = { checkin: null, checkout: null, nights: 0 };
       document.getElementById("payment-section").style.display = "none";
       loadAvailabilityData();
       loadOccupiedForRoom(bungalowSelect.value, true);
+    });
+
+    const pasajerosSelect = document.getElementById("pasajeros");
+    pasajerosSelect.addEventListener("change", () => {
+      updatePriceLine(); 
     });
 
     document.getElementById("moneda").addEventListener("change", updatePriceLine);

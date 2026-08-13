@@ -147,7 +147,6 @@
     <div class="top-row">
       <span class="select-wrap">
         <select id="bungalow">
-          <!-- Apart 5 fue eliminado -->
           <option value="Apart 1">Apart 1</option>
           <option value="Apart 2">Apart 2</option>
           <option value="Apart 3">Apart 3</option>
@@ -162,14 +161,9 @@
         </select>
       </span>
       
-      <!-- Nuevo selector de pasajeros -->
       <span class="select-wrap">
         <select id="pasajeros">
-          <option value="1">1 Persona</option>
-          <option value="2" selected>2 Personas</option>
-          <option value="3">3 Personas</option>
-          <option value="4">4 Personas</option>
-          <option value="5">5 Personas</option>
+          <!-- Las opciones se generarán solas mediante JavaScript -->
         </select>
       </span>
 
@@ -216,36 +210,69 @@
 
 <script>
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH61JMbyMvV2lg2WQ2hPmCFwbAWcEQtWQAPoGBcTCTVpX-3in2aIIqNB1xTEkg02Q2ig/exec";
-  const TIPO_CAMBIO_USD = 1000; // Tasa de cambio para calcular el USD dinámico
+  const TIPO_CAMBIO_USD = 1000; 
 
-  let preciosDinámicos = {}; // Aquí guardaremos los precios que vengan del Excel
-  
+  let preciosDinámicos = {}; 
   let currentDate = new Date();
   const occupiedCache = new Map();
   let selection = { checkin: null, checkout: null, nights: 0 };
   let paypalInitialized = false;
 
+  // Límite de capacidad según el departamento
+  const capacidadesMaximas = {
+    "Apart 2": 5,
+    "Apart 12": 5,
+    "Apart 15": 4
+  };
+
+  // Función para actualizar las opciones de pasajeros
+  function actualizarOpcionesPasajeros() {
+    const room = document.getElementById("bungalow").value;
+    const paxSelect = document.getElementById("pasajeros");
+    
+    // Si está en nuestra lista usa ese máximo, sino por defecto asume 2
+    const maxPax = capacidadesMaximas[room] || 2; 
+
+    // Guardamos lo que tenía seleccionado el usuario por si cambia de apart
+    let valorActual = parseInt(paxSelect.value) || 2; 
+
+    // Limpiamos las opciones actuales
+    paxSelect.innerHTML = "";
+
+    // Armamos las nuevas opciones
+    for (let i = 1; i <= maxPax; i++) {
+      const option = document.createElement("option");
+      option.value = i;
+      option.textContent = i === 1 ? "1 Persona" : `${i} Personas`;
+      paxSelect.appendChild(option);
+    }
+
+    // Si el valor que tenía antes es mayor al nuevo máximo, lo bajamos al máximo permitido
+    if (valorActual > maxPax) {
+      paxSelect.value = maxPax;
+    } else {
+      paxSelect.value = valorActual;
+    }
+
+    updatePriceLine();
+  }
+
   function fmtARS(n){
     return new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(n);
   }
 
-  // Obtenemos el precio calculando Habitación + Cantidad de pasajeros
   function obtenerPrecioBase() {
     const room = document.getElementById("bungalow").value;
     const pax = document.getElementById("pasajeros").value;
     
-    // Si no hay precios cargados todavía, devolvemos 0
     if (!preciosDinámicos[room]) return 0;
 
-    // Buscamos el precio para esa cantidad de personas. Si piden 4 y el max es 2, aplicamos el máximo disponible.
     let precio = preciosDinámicos[room][pax];
     if (!precio) {
-      // Encuentra el valor máximo disponible en la tabla para esa habitación
       const capacidades = Object.keys(preciosDinámicos[room]);
       const maxCapacidad = Math.max(...capacidades);
       precio = preciosDinámicos[room][maxCapacidad];
     }
-    
     return precio;
   }
 
@@ -270,11 +297,9 @@
         el.textContent = `${room} (${pax} pax) · $${precioUsd} USD por noche`;
       }
     }
-    // Si ya seleccionaron fechas, actualizamos el resumen abajo
     updateSummary(); 
   }
 
-  // --- CONEXIÓN AL GOOGLE SHEET PARA TRAER PRECIOS ---
   async function cargarPreciosDesdeSheet() {
     try {
       const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
@@ -287,7 +312,6 @@
     }
   }
 
-  // Resto de funciones del calendario (iguales a las que tenías)
   function toISO(dateObj){
     const y = dateObj.getFullYear();
     const m = String(dateObj.getMonth()+1).padStart(2,"0");
@@ -471,7 +495,6 @@
     document.getElementById("nights-info").textContent = `${room} (${pax} pax) · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
     userForm.style.display = "flex";
 
-    // Calculamos el total con el precio extraído del Excel
     const precioBase = obtenerPrecioBase();
     
     if (moneda === "ARS") {
@@ -500,13 +523,12 @@
               alert("Por favor completá tu nombre, apellido y WhatsApp antes de pagar.");
               throw new Error("Datos incompletos");
             }
-            // Recalculamos al instante por seguridad
             const currentNights = selection.nights;
             const currentTotal = currentNights * parseFloat((obtenerPrecioBase() / TIPO_CAMBIO_USD).toFixed(2));
 
             return actions.order.create({
               purchase_units: [{
-                description: `Reserva de ${currentNights} noches en ${room} (${pax} pax)`,
+                description: `Reserva de ${currentNights} noches en ${room} (${document.getElementById("pasajeros").value} pax)`,
                 amount: { value: currentTotal.toFixed(2) }
               }]
             });
@@ -545,7 +567,7 @@
     const pax = document.getElementById("pasajeros").value;
     const payload = {
       bungalow: room,
-      pasajeros: pax, // Enviamos este dato también por si lo necesitas en el panel
+      pasajeros: pax, 
       checkin: selection.checkin,
       checkout: selection.checkout,
       nombre: nombre,
@@ -627,13 +649,18 @@
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    // Iniciamos pidiendo los precios al Excel de fondo
+    // Al cargar la página, armamos los pasajeros para el primer depto de la lista
+    actualizarOpcionesPasajeros();
     cargarPreciosDesdeSheet();
 
     const bungalowSelect = document.getElementById("bungalow");
     bungalowSelect.addEventListener("change", () => {
       selection = { checkin: null, checkout: null, nights: 0 };
       document.getElementById("payment-section").style.display = "none";
+      
+      // Aca disparamos el cambio de capacidad al elegir otro apart
+      actualizarOpcionesPasajeros();
+      
       loadAvailabilityData();
       loadOccupiedForRoom(bungalowSelect.value, true);
     });

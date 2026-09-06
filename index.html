@@ -1,718 +1,281 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Reservas Portillo Apartments</title>
+const MP_ACCESS_TOKEN = "APP_USR-1593830035169791-092513-209e24a92da81baab573b2579b6d80bc-359434421"; 
+const EMAIL_NOTIFICACIONES = "avageor23@gmail.com"; 
 
-  <!-- SDK oficial de PayPal para USD -->
-  <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD"></script>
-
-  <style>
-    * { box-sizing: border-box; }
-
-    :root{
-      --pad: clamp(10px, 2.0vw, 18px);
-      --day: clamp(38px, 8.6vw, 46px);
-      --gap: clamp(7px, 1.4vw, 10px);
+// ==========================================
+// 1. RECEPCIÓN DE PAGOS Y RESERVAS (POST)
+// ==========================================
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "error", message: "Error: Sin datos POST"
+      })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    body {
-      margin: 0; 
-      padding: 0;
-      font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background-image: linear-gradient(rgba(18, 18, 18, 0.5), rgba(18, 18, 18, 0.7)), url('https://lh3.googleusercontent.com/d/17KYey5qeqhP_eaIKCG-K6PE-FIS48ci9');
-      background-size: cover; 
-      background-position: center; 
-      background-repeat: no-repeat;
-      background-attachment: fixed;
-      color: #fff; 
-      text-align: center;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: calc(var(--pad) + env(safe-area-inset-top)) var(--pad) calc(var(--pad) + env(safe-area-inset-bottom)) var(--pad);
+    const data = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    let sheet = ss.getSheetByName(data.bungalow);
+    if (!sheet) {
+      sheet = ss.getActiveSheet(); 
     }
 
-    .container{
-      background: rgba(18, 18, 18, 0.75);
-      border: 1px solid rgba(255,255,255,0.22);
-      padding: 20px 18px 22px;
-      border-radius: 22px;
-      max-width: 680px;
-      width: 100%;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.40);
-      backdrop-filter: blur(6px);
-      position: relative;
-      overflow: hidden;
-      max-height: calc(100dvh - (var(--pad) * 2));
-      overflow: auto;
+    const fechaRegistro = Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd/MM/yyyy HH:mm");
+
+    if (data.moneda === "ARS") {
+      const externalReference = "AVAGE-" + data.bungalow.replace(/\s+/g, '') + "-" + data.checkin + "-" + Date.now();
+
+      const preferenceData = {
+        items: [{
+          title: "Reserva " + data.noches + " noches en " + data.bungalow + " (" + data.pasajeros + " pax)",
+          quantity: 1,
+          unit_price: Number(data.montoTotal),
+          currency_id: "ARS"
+        }],
+        payer: {
+          name: data.nombre,
+          surname: data.apellido,
+          email: "cliente@avage.com.ar"
+        },
+        external_reference: externalReference, 
+        back_urls: {
+          success: "https://avage.com.ar/?status=success&ref=" + externalReference,
+          failure: "https://avage.com.ar/?status=failure",
+          pending: "https://avage.com.ar/?status=pending"
+        },
+        auto_return: "approved"
+      };
+
+      const options = {
+        method: "post",
+        contentType: "application/json",
+        headers: { "Authorization": "Bearer " + MP_ACCESS_TOKEN },
+        payload: JSON.stringify(preferenceData),
+        muteHttpExceptions: true
+      };
+
+      const response = UrlFetchApp.fetch("https://api.mercadopago.com/checkout/preferences", options);
+      const responseCode = response.getResponseCode();
+      const responseText = response.getContentText();
+
+      if (responseCode !== 200 && responseCode !== 201) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "error",
+          message: "MP " + responseCode + ": " + responseText.substring(0, 50)
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const mpResult = JSON.parse(responseText);
+      const estadoReserva = "Pendiente de Pago (Mercado Pago)";
+
+      // INSERCIÓN DE RESERVA (Columna K = Moneda ARS)
+      const datosARS = [
+        fechaRegistro, 
+        estadoReserva, 
+        data.nombre, 
+        data.apellido, 
+        data.contacto, 
+        data.checkin, 
+        data.checkout, 
+        data.pasajeros, 
+        data.montoTotal, 
+        externalReference,
+        data.moneda
+      ];
+      insertarFilaOrdenada(sheet, datosARS);
+
+      enviarCorreoNotificacion(data, estadoReserva, externalReference);
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        init_point: mpResult.init_point
+      })).setMimeType(ContentService.MimeType.JSON);
+
+    } else {
+      const referenciaUSD = "USD-" + Date.now();
+      const estadoReserva = "Completado / PayPal";
+
+      // INSERCIÓN DE RESERVA (Columna K = Moneda USD)
+      const datosUSD = [
+        fechaRegistro, 
+        estadoReserva, 
+        data.nombre, 
+        data.apellido, 
+        data.contacto, 
+        data.checkin, 
+        data.checkout, 
+        data.pasajeros, 
+        data.montoTotal, 
+        referenciaUSD,
+        data.moneda
+      ];
+      insertarFilaOrdenada(sheet, datosUSD);
+
+      enviarCorreoNotificacion(data, estadoReserva, referenciaUSD);
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success"
+      })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    h2{ margin:0 0 8px; font-size: clamp(1.35rem, 3.6vw, 1.75rem); }
-    .subtitle{ margin:0 0 12px; font-size: clamp(.90rem, 2.6vw, .95rem); opacity:.92; }
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error", message: "Excepcion: " + error.message
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
 
-    .top-row{
-      display:flex;
-      justify-content:center;
-      gap:10px;
-      flex-wrap:wrap;
-      margin: 10px 0 6px;
-    }
+// ==========================================
+// 2. PETICIONES DESDE LA WEB (GET)
+// ==========================================
+function doGet(e) {
+  const action = e.parameter.action;
 
-    select{
-      -webkit-appearance:none;
-      appearance:none;
-      padding: 11px 36px 11px 14px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.25);
-      background: rgba(0,0,0,0.4);
-      color:#fff;
-      font-size: clamp(.92rem, 2.5vw, .95rem);
-      font-weight:800;
-      min-width: min(160px, 92vw);
-      outline:none;
-      box-shadow: 0 8px 18px rgba(0,0,0,0.22);
-    }
+  if (action === "getPrecios") {
+    const precios = obtenerPreciosEscalonados();
+    return ContentService.createTextOutput(JSON.stringify(precios))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 
-    .select-wrap{ position:relative; display:inline-block; }
-    .select-wrap:after{
-      content:"▾";
-      position:absolute; right:14px; top:50%;
-      transform:translateY(-50%);
-      color:rgba(255,255,255,0.85);
-      pointer-events:none;
-    }
+  if (action === "getDispo") {
+    const room = e.parameter.room;
+    const ocupadas = obtenerFechasOcupadas(room);
+    return ContentService.createTextOutput(JSON.stringify(ocupadas))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 
-    .price-line{
-      margin: 8px 0 10px;
-      font-size: 0.95rem;
-      font-weight: 900;
-      background: rgba(0,0,0,0.3);
-      border: 1px solid rgba(255,255,255,0.18);
-      padding: 8px 14px;
-      border-radius: 999px;
-      display: inline-block;
-    }
+  return ContentService.createTextOutput(JSON.stringify({ error: "Acción no válida" }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
-    .calendar-nav{ display:flex; justify-content:center; gap:10px; margin-top: 10px; }
+// ==========================================
+// 3. FUNCIONES AUXILIARES Y CORREO
+// ==========================================
 
-    button{
-      border:none; border-radius: 999px; padding: 10px 14px;
-      font-family:inherit; font-weight:900; cursor:pointer; color:#fff;
-      background: rgba(0, 51, 102, 0.92);
-      box-shadow: 0 6px 16px rgba(0,0,0,0.35);
-    }
+function insertarFilaOrdenada(sheet, arrayDatos) {
+  sheet.appendRow(arrayDatos);
+}
 
-    .month-wrap{ display:flex; align-items:center; justify-content:center; margin: 12px 0 8px; }
-    #month-year{ margin:0; font-size: 1.1rem; background: rgba(0,0,0,0.3); padding: 8px 14px; border-radius: 999px; }
-
-    table{
-      width:100%; border-collapse: separate; border-spacing: var(--gap);
-      background: rgba(255,255,255,0.95); color:#000; border-radius: 16px; padding: 10px;
-    }
-    th{ color: rgba(0,0,0,0.55); font-size: 0.72rem; text-transform: uppercase; }
-    td > .day{
-      width: var(--day); height: var(--day); margin: 0 auto; border-radius: 999px;
-      display:grid; place-items:center; font-weight: 900; background: rgba(0,0,0,0.05);
-    }
-    td.available > .day{ background: rgba(200,247,197,0.95); cursor:pointer; }
-    td.unavailable > .day{ background: rgba(0,0,0,0.07); color: rgba(0,0,0,0.35); cursor:not-allowed; }
-    td.checkin > .day, td.checkout > .day{ background: #003366 !important; color:#fff !important; }
-    td.selected-day > .day{ background: rgba(10, 90, 170, 0.18) !important; }
-
-    .payment-info{
-      background: rgba(255,255,255,0.96); color:#000; padding: 14px;
-      border-radius: 16px; margin-top: 14px; text-align:left; font-size: .92rem;
-    }
-    .user-form { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
-    .user-form input { padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
-
-    #pay-btn{
-      display:block; width:100%; margin-top: 10px; font-weight: 900; font-size: 1rem;
-      padding: 12px; border-radius: 999px; text-align:center; color:#fff;
-      background: #003366; border: none; cursor: pointer;
-    }
-    #pay-btn.disabled{ opacity:.5; pointer-events:none; }
-    #paypal-button-container { margin-top: 12px; }
-  </style>
-</head>
-
-<body>
-  <div class="container">
-    <h2>Reservá tu Apart</h2>
-    <p class="subtitle">Elegí el departamento, moneda y seleccioná tus fechas</p>
-
-    <div class="top-row">
-      <span class="select-wrap">
-        <select id="bungalow">
-          <option value="Apart 1">Apart 1</option>
-          <option value="Apart 2">Apart 2</option>
-          <option value="Apart 3">Apart 3</option>
-          <option value="Apart 4">Apart 4</option>
-          <option value="Apart 6">Apart 6</option>
-          <option value="Apart 11">Apart 11</option>
-          <option value="Apart 12">Apart 12</option>
-          <option value="Apart 17">Apart 17</option>
-          <option value="Apart 14">Apart 14</option>
-          <option value="Apart 15">Apart 15</option>
-          <option value="Apart 16">Apart 16</option>
-        </select>
-      </span>
-      
-      <!-- Wrap del selector de pasajeros con ID para poder ocultarlo -->
-      <span class="select-wrap" id="wrap-pasajeros" style="display: none;">
-        <select id="pasajeros">
-          <!-- Las opciones se generarán solas -->
-        </select>
-      </span>
-
-      <span class="select-wrap">
-        <select id="moneda">
-          <option value="ARS">Pesos ARS (Seña)</option>
-          <option value="USD">Dólares USD (Total)</option>
-        </select>
-      </span>
-    </div>
-
-    <div id="price-line" class="price-line">Calculando...</div>
-
-    <div class="calendar-nav">
-      <button type="button" onclick="changeMonth(-1)">Mes anterior</button>
-      <button type="button" onclick="changeMonth(1)">Mes siguiente</button>
-    </div>
-
-    <div id="calendar">
-      <div class="month-wrap"><h3 id="month-year"></h3></div>
-      <table>
-        <thead>
-          <tr><th>Dom</th><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th></tr>
-        </thead>
-        <tbody id="calendar-body"></tbody>
-      </table>
-    </div>
-
-    <div class="payment-info" id="payment-section" style="display:none;">
-      <h4>Resumen</h4>
-      <p id="nights-info"></p>
-      <p id="amount-info"></p>
-
-      <div id="user-data-form" class="user-form" style="display: none;">
-        <input type="text" id="cli-nombre" placeholder="Nombre" required>
-        <input type="text" id="cli-apellido" placeholder="Apellido" required>
-        <input type="tel" id="cli-contacto" placeholder="WhatsApp / Teléfono" required>
-      </div>
-
-      <div id="paypal-button-container" style="display:none;"></div>
-      <button id="pay-btn" type="button" class="disabled">Completar datos</button>
-    </div>
-  </div>
-
-<script>
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH61JMbyMvV2lg2WQ2hPmCFwbAWcEQtWQAPoGBcTCTVpX-3in2aIIqNB1xTEkg02Q2ig/exec";
-  const TIPO_CAMBIO_USD = 1000; 
-
-  // SALVAVIDAS: Precios cargados por defecto para que la página funcione INMEDIATAMENTE
-  // Si luego el Apps Script contesta con éxito, estos valores se sobreescriben.
-  const preciosFallback = {
-    "Apart 1": { "2": 53000 },
-    "Apart 2": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
-    "Apart 3": { "2": 60000 },
-    "Apart 4": { "2": 63000 },
-    "Apart 6": { "2": 60000 },
-    "Apart 11": { "2": 53000 },
-    "Apart 12": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
-    "Apart 14": { "2": 58000 },
-    "Apart 15": { "2": 63000, "3": 80000, "4": 95000 },
-    "Apart 16": { "2": 56000 },
-    "Apart 17": { "2": 57000 }
-  };
-
-  let preciosDinámicos = JSON.parse(JSON.stringify(preciosFallback)); 
+function enviarCorreoNotificacion(data, estado, referencia) {
+  const asunto = `NUEVA RESERVA (${data.moneda}): ${data.bungalow} - ${data.nombre} ${data.apellido}`;
   
-  let currentDate = new Date();
-  const occupiedCache = new Map();
-  let selection = { checkin: null, checkout: null, nights: 0 };
-  let paypalInitialized = false;
-
-  // Límite de capacidad (los que no están acá asumen máximo 2)
-  const capacidadesMaximas = {
-    "Apart 2": 5,
-    "Apart 12": 5,
-    "Apart 15": 4
-  };
-
-  // Función para actualizar las opciones de pasajeros y OCULTAR el menú si es fijo
-  function actualizarOpcionesPasajeros() {
-    const room = document.getElementById("bungalow").value;
-    const paxSelect = document.getElementById("pasajeros");
-    const wrapPasajeros = document.getElementById("wrap-pasajeros");
+  const mensajeHTML = `
+    <h2 style="color: #003366;">¡Ha ingresado una nueva reserva!</h2>
+    <hr>
+    <h3>👤 Datos del Cliente</h3>
+    <ul>
+      <li><b>Nombre:</b> ${data.nombre} ${data.apellido}</li>
+      <li><b>Contacto (WhatsApp):</b> ${data.contacto}</li>
+    </ul>
     
-    const maxPax = capacidadesMaximas[room] || 2; 
-    let valorActual = parseInt(paxSelect.value) || 2; 
+    <h3>🏨 Datos del Alojamiento</h3>
+    <ul>
+      <li><b>Departamento:</b> ${data.bungalow}</li>
+      <li><b>Cantidad de Personas:</b> ${data.pasajeros}</li>
+      <li><b>Fecha de Check-in:</b> ${data.checkin}</li>
+      <li><b>Fecha de Check-out:</b> ${data.checkout}</li>
+      <li><b>Cantidad de Noches:</b> ${data.noches}</li>
+    </ul>
 
-    // Limpiamos
-    paxSelect.innerHTML = "";
+    <h3>💰 Detalles del Pago</h3>
+    <ul>
+      <li><b>Monto:</b> ${data.montoTotal} ${data.moneda}</li>
+      <li><b>Estado:</b> ${estado}</li>
+      <li><b>Referencia:</b> ${referencia}</li>
+    </ul>
+    <br>
+    <p><i>Este correo fue generado automáticamente por el sistema de reservas.</i></p>
+  `;
 
-    if (maxPax === 2) {
-      // TARIFA PLANA: Ocultamos el botón porque no aporta nada elegir personas
-      wrapPasajeros.style.display = "none";
-      const option = document.createElement("option");
-      option.value = 2;
-      option.textContent = "2 Personas";
-      paxSelect.appendChild(option);
-      paxSelect.value = 2;
-    } else {
-      // TARIFA VARIABLE: Mostramos el botón, arrancando siempre desde 2
-      wrapPasajeros.style.display = "inline-block";
-      for (let i = 2; i <= maxPax; i++) {
-        const option = document.createElement("option");
-        option.value = i;
-        option.textContent = `${i} Personas`;
-        paxSelect.appendChild(option);
-      }
-      
-      if (valorActual < 2) valorActual = 2;
-      paxSelect.value = valorActual > maxPax ? maxPax : valorActual;
-    }
-
-    updatePriceLine();
-  }
-
-  function fmtARS(n){
-    return new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(n);
-  }
-
-  function obtenerPrecioBase() {
-    const room = document.getElementById("bungalow").value;
-    const pax = document.getElementById("pasajeros").value;
-    
-    if (!preciosDinámicos[room]) return 0;
-
-    let precio = preciosDinámicos[room][pax];
-    if (!precio) {
-      const capacidades = Object.keys(preciosDinámicos[room]);
-      const maxCapacidad = Math.max(...capacidades);
-      precio = preciosDinámicos[room][maxCapacidad];
-    }
-    return precio;
-  }
-
-  function updatePriceLine(){
-    const room = document.getElementById("bungalow").value;
-    const moneda = document.getElementById("moneda").value;
-    const pax = document.getElementById("pasajeros").value;
-    const el = document.getElementById("price-line");
-    
-    const precioArs = obtenerPrecioBase();
-
-    if (el) {
-      if (precioArs === 0) {
-        el.textContent = "Revisá los precios de este Apart";
-        return;
-      }
-
-      // Si el select está oculto (tarifa plana), no mostramos "(2 pax)" para que quede más limpio
-      const isFixed = document.getElementById("wrap-pasajeros").style.display === "none";
-      const textoPax = isFixed ? "" : ` (${pax} pax)`;
-
-      if (moneda === "ARS") {
-        el.textContent = `${room}${textoPax} · ${fmtARS(precioArs)} por noche`;
-      } else {
-        const precioUsd = (precioArs / TIPO_CAMBIO_USD).toFixed(0);
-        el.textContent = `${room}${textoPax} · $${precioUsd} USD por noche`;
-      }
-    }
-    updateSummary(); 
-  }
-
-  async function cargarPreciosDesdeSheet() {
-    try {
-      const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
-      const data = await response.json();
-      
-      // Solo sobreescribimos si el Excel nos devolvió datos válidos
-      if (data && Object.keys(data).length > 0) {
-        preciosDinámicos = data;
-        updatePriceLine();
-      }
-    } catch (e) {
-      // Si falla la conexión (por permisos o red), usamos el salvavidas
-      console.warn("No se pudo leer el Excel. Usando precios de respaldo.", e);
-      updatePriceLine(); 
-    }
-  }
-
-  function toISO(dateObj){
-    const y = dateObj.getFullYear();
-    const m = String(dateObj.getMonth()+1).padStart(2,"0");
-    const d = String(dateObj.getDate()).padStart(2,"0");
-    return `${y}-${m}-${d}`;
-  }
-
-  function fmtISO(iso){
-    if(!iso) return "";
-    const [y,m,d] = iso.split("-");
-    return `${d}/${m}/${y}`;
-  }
-
-  function isoToDate(iso){
-    const [y,m,d] = iso.split("-");
-    return new Date(Number(y), Number(m)-1, Number(d));
-  }
-
-  function diffNights(checkinISO, checkoutISO){
-    return Math.round((isoToDate(checkoutISO) - isoToDate(checkinISO)) / (1000*60*60*24));
-  }
-
-  function enumerateNights(checkinISO, checkoutISO){
-    const out = [];
-    const cur = new Date(isoToDate(checkinISO));
-    const end = isoToDate(checkoutISO);
-    while(cur < end){
-      out.push(toISO(cur));
-      cur.setDate(cur.getDate()+1);
-    }
-    return out;
-  }
-
-  function clearCalendarHighlights(){
-    document.querySelectorAll("td.selected-day, td.checkin, td.checkout")
-      .forEach(td => td.classList.remove("selected-day","checkin","checkout"));
-  }
-
-  function highlightRange(checkinISO, checkoutISO){
-    enumerateNights(checkinISO, checkoutISO).forEach(iso => {
-      const td = document.querySelector(`td[data-fecha="${iso}"]`);
-      if (td) td.classList.add("selected-day");
+  try {
+    MailApp.sendEmail({
+      to: EMAIL_NOTIFICACIONES,
+      subject: asunto,
+      htmlBody: mensajeHTML
     });
+  } catch (error) {
+    console.error("No se pudo enviar el correo: " + error.message);
   }
+}
 
-  async function loadOccupiedForRoom(room, forceRefresh = false){
-    if (!forceRefresh && occupiedCache.has(room)) {
-      return occupiedCache.get(room);
-    }
-    try {
-      const r = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(room)}`, { cache: "no-store" });
-      const rows = await r.json();
-      const occupied = new Set();
-      for (let i = 1; i < rows.length; i++){
-        const rr = rows[i];
-        if (!rr || rr.length === 0) continue;
-        if (rr[0]) occupied.add(String(rr[0]).trim());
-      }
-      occupiedCache.set(room, occupied);
-      return occupied;
-    } catch (e) {
-      console.warn("Error cargando disponibilidad:", e);
-      return new Set();
-    }
-  }
+function obtenerPreciosEscalonados() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetTarifas = ss.getSheetByName("TARIFAS");
+  const listaPrecios = {};
 
-  async function loadAvailabilityData(){
-    const room = document.getElementById("bungalow").value;
-    const body = document.getElementById("calendar-body");
+  if (!sheetTarifas) return listaPrecios;
+
+  const datos = sheetTarifas.getDataRange().getValues();
+  if (datos.length < 2) return listaPrecios;
+
+  for (let i = 1; i < datos.length; i++) {
+    const fila = datos[i];
+    const nombreApart = fila[0] ? fila[0].toString().trim() : "";
     
-    let occupied = occupiedCache.get(room) || new Set();
-    
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    if (!nombreApart) continue;
 
-    document.getElementById("month-year").textContent = currentDate.toLocaleString("es-ES", { month: "long", year: "numeric" });
-    body.innerHTML = "";
+    const preciosPorPasajero = {};
 
-    let row = document.createElement("tr");
-    for (let i=0; i<firstDay; i++) row.appendChild(document.createElement("td"));
+    if (fila[1] !== "" && fila[1] !== null) preciosPorPasajero[2] = fila[1];
+    if (fila[2] !== "" && fila[2] !== null) preciosPorPasajero[3] = fila[2];
+    if (fila[3] !== "" && fila[3] !== null) preciosPorPasajero[4] = fila[3];
+    if (fila[4] !== "" && fila[4] !== null) preciosPorPasajero[5] = fila[4];
 
-    for (let day=1; day<=daysInMonth; day++){
-      const date = new Date(year, month, day);
-      const td = document.createElement("td");
-      td.innerHTML = `<div class="day">${day}</div>`;
-      const iso = toISO(date);
-      td.dataset.fecha = iso;
-
-      if (date < new Date(new Date().setHours(0,0,0,0))) {
-        td.className = "unavailable";
-      } else if (occupied.has(iso)){
-        td.className = "unavailable";
-      } else {
-        td.className = "available";
-        td.onclick = () => onDayClick(iso);
-      }
-      row.appendChild(td);
-      if (date.getDay() === 6){ body.appendChild(row); row = document.createElement("tr"); }
+    if (Object.keys(preciosPorPasajero).length > 0) {
+      listaPrecios[nombreApart] = preciosPorPasajero;
     }
-    if (row.children.length > 0) body.appendChild(row);
-    updatePriceLine();
-
-    loadOccupiedForRoom(room, true).then(freshOccupied => {
-      freshOccupied.forEach(iso => {
-        const td = document.querySelector(`td[data-fecha="${iso}"]`);
-        if (td && !td.classList.contains("checkin") && !td.classList.contains("checkout")) {
-          td.className = "unavailable";
-          td.onclick = null;
-        }
-      });
-    });
   }
 
-  function changeMonth(offset){
-    currentDate.setMonth(currentDate.getMonth() + offset);
-    loadAvailabilityData();
+  return listaPrecios;
+}
+
+function decodificarFechaSegura(valor) {
+  if (!valor) return null;
+  if (valor instanceof Date) return valor;
+  
+  const str = String(valor).trim();
+  if (str.includes("-")) {
+    const partes = str.split("T")[0].split("-");
+    if (partes.length === 3) {
+      return new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+    }
   }
-
-  function onDayClick(isoDate){
-    const room = document.getElementById("bungalow").value;
-    const occupied = occupiedCache.get(room) || new Set();
-
-    if (!selection.checkin || selection.checkout){
-      selection.checkin = isoDate;
-      selection.checkout = null;
-      clearCalendarHighlights();
-      document.querySelector(`td[data-fecha="${isoDate}"]`)?.classList.add("checkin");
-      updateSummary();
-      return;
+  if (str.includes("/")) {
+    const partes = str.split(" ")[0].split("/");
+    if (partes.length === 3) {
+      return new Date(parseInt(partes[2]), parseInt(partes[1]) - 1, parseInt(partes[0]));
     }
-
-    if (isoDate <= selection.checkin){
-      selection.checkin = isoDate;
-      selection.checkout = null;
-      clearCalendarHighlights();
-      document.querySelector(`td[data-fecha="${isoDate}"]`)?.classList.add("checkin");
-      updateSummary();
-      return;
-    }
-
-    if (enumerateNights(selection.checkin, isoDate).some(n => occupied.has(n))){
-      alert("Hay una noche ocupada en el rango seleccionado.");
-      return;
-    }
-
-    selection.checkout = isoDate;
-    selection.nights = diffNights(selection.checkin, selection.checkout);
-    clearCalendarHighlights();
-    highlightRange(selection.checkin, selection.checkout);
-    document.querySelector(`td[data-fecha="${selection.checkin}"]`)?.classList.add("checkin");
-    document.querySelector(`td[data-fecha="${selection.checkout}"]`)?.classList.add("checkout");
-    updateSummary();
   }
+  return new Date(valor);
+}
 
-  function updateSummary(){
-    const { checkin, checkout, nights } = selection;
-    const room = document.getElementById("bungalow").value;
-    const moneda = document.getElementById("moneda").value;
-    const pax = document.getElementById("pasajeros").value;
+function obtenerFechasOcupadas(nombreHoja) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(nombreHoja);
+  const fechasBloqueadas = [["fecha"]]; 
+  
+  if (!sheet) return fechasBloqueadas;
+
+  const datos = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < datos.length; i++) {
+    const fila = datos[i];
+    const estado = fila[1] ? fila[1].toString().toLowerCase() : "";
     
-    if (!checkin) { document.getElementById("payment-section").style.display = "none"; return; }
-    document.getElementById("payment-section").style.display = "block";
-
-    const userForm = document.getElementById("user-data-form");
-    const payBtn = document.getElementById("pay-btn");
-    const paypalContainer = document.getElementById("paypal-button-container");
-
-    const isFixed = document.getElementById("wrap-pasajeros").style.display === "none";
-    const textoPax = isFixed ? "" : ` (${pax} pax)`;
-
-    if (!checkout){
-      document.getElementById("nights-info").textContent = `${room}${textoPax} · Ingreso: ${fmtISO(checkin)}`;
-      document.getElementById("amount-info").textContent = `Elegí la fecha de salida.`;
-      userForm.style.display = "none";
-      payBtn.style.display = "block";
-      payBtn.classList.add("disabled");
-      payBtn.textContent = "Completar datos";
-      paypalContainer.style.display = "none";
-      return;
-    }
-
-    document.getElementById("nights-info").textContent = `${room}${textoPax} · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
-    userForm.style.display = "flex";
-
-    const precioBase = obtenerPrecioBase();
+    const checkin = decodificarFechaSegura(fila[5]); 
+    const checkout = decodificarFechaSegura(fila[6]); 
     
-    if (moneda === "ARS") {
-      const montoTotal = nights * precioBase;
-      document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(montoTotal)}`;
-      payBtn.style.display = "block";
-      payBtn.classList.remove("disabled");
-      payBtn.textContent = "Pagar con Mercado Pago (ARS)";
-      payBtn.onclick = () => procesarPagoARS(montoTotal);
-      paypalContainer.style.display = "none";
-    } else {
-      const precioBaseUSD = parseFloat((precioBase / TIPO_CAMBIO_USD).toFixed(2));
-      const montoTotal = nights * precioBaseUSD;
-      document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal.toFixed(2)} USD`;
-      payBtn.style.display = "none";
-      paypalContainer.style.display = "block";
+    if (estado.includes("cancelad") || estado.includes("rechazad")) continue;
 
-      if (!paypalInitialized && window.paypal) {
-        paypalInitialized = true;
-        paypal.Buttons({
-          createOrder: function(data, actions) {
-            const nombre = document.getElementById("cli-nombre").value.trim();
-            const apellido = document.getElementById("cli-apellido").value.trim();
-            const contacto = document.getElementById("cli-contacto").value.trim();
-            if (!nombre || !apellido || !contacto) {
-              alert("Por favor completá tu nombre, apellido y WhatsApp antes de pagar.");
-              throw new Error("Datos incompletos");
-            }
-            const currentNights = selection.nights;
-            const currentTotal = currentNights * parseFloat((obtenerPrecioBase() / TIPO_CAMBIO_USD).toFixed(2));
-
-            return actions.order.create({
-              purchase_units: [{
-                description: `Reserva de ${currentNights} noches en ${room} (${document.getElementById("pasajeros").value} pax)`,
-                amount: { value: currentTotal.toFixed(2) }
-              }]
-            });
-          },
-          onApprove: function(data, actions) {
-            return actions.order.capture().then(function(details) {
-              const currentTotal = selection.nights * parseFloat((obtenerPrecioBase() / TIPO_CAMBIO_USD).toFixed(2));
-              enviarReservaAlServidor("USD", currentTotal);
-            });
-          }
-        }).render('#paypal-button-container');
+    if (checkin && checkout && !isNaN(checkin.getTime()) && !isNaN(checkout.getTime())) {
+      let actual = new Date(checkin.getTime());
+      while (actual < checkout) {
+        const iso = Utilities.formatDate(actual, "America/Argentina/Buenos_Aires", "yyyy-MM-dd");
+        fechasBloqueadas.push([iso]);
+        actual.setDate(actual.getDate() + 1);
       }
     }
   }
-
-  async function procesarPagoARS(montoTotal) {
-    const nombre = document.getElementById("cli-nombre").value.trim();
-    const apellido = document.getElementById("cli-apellido").value.trim();
-    const contacto = document.getElementById("cli-contacto").value.trim();
-    const payBtn = document.getElementById("pay-btn");
-
-    if (!nombre || !apellido || !contacto) {
-      payBtn.textContent = "¡Completá tus datos para continuar!";
-      payBtn.style.background = "#b32a2a";
-      setTimeout(() => {
-        payBtn.textContent = "Pagar con Mercado Pago (ARS)";
-        payBtn.style.background = "#003366";
-      }, 3000);
-      return;
-    }
-
-    payBtn.textContent = "Generando pago automatizado...";
-    payBtn.classList.add("disabled");
-
-    const room = document.getElementById("bungalow").value;
-    const pax = document.getElementById("pasajeros").value;
-    const payload = {
-      bungalow: room,
-      pasajeros: pax, 
-      checkin: selection.checkin,
-      checkout: selection.checkout,
-      nombre: nombre,
-      apellido: apellido,
-      contacto: contacto,
-      moneda: "ARS",
-      noches: selection.nights,
-      montoTotal: montoTotal
-    };
-
-    try {
-      const response = await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        body: JSON.stringify(payload),
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-      });
-      
-      const result = await response.json();
-
-      if (result.status === "success" && result.init_point) {
-        window.location.href = result.init_point;
-      } else {
-        console.error("Detalle del error:", result.message);
-        payBtn.textContent = result.message ? result.message : "Error desconocido en pasarela";
-        payBtn.style.background = "#b32a2a";
-      }
-    } catch (e) {
-      console.error("Error:", e);
-      payBtn.textContent = "Error de conexión con el servidor";
-      payBtn.style.background = "#b32a2a";
-    }
-  }
-
-  async function enviarReservaAlServidor(moneda, montoTotal) {
-    const nombre = document.getElementById("cli-nombre").value.trim();
-    const apellido = document.getElementById("cli-apellido").value.trim();
-    const contacto = document.getElementById("cli-contacto").value.trim();
-    const room = document.getElementById("bungalow").value;
-    const pax = document.getElementById("pasajeros").value;
-
-    const payload = {
-      bungalow: room,
-      pasajeros: pax,
-      checkin: selection.checkin,
-      checkout: selection.checkout,
-      nombre: nombre,
-      apellido: apellido,
-      contacto: contacto,
-      moneda: moneda,
-      noches: selection.nights,
-      montoTotal: montoTotal
-    };
-
-    try {
-      const response = await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        body: JSON.stringify(payload),
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-      });
-      
-      const result = await response.json();
-
-      if (result.status === "success" && moneda === "USD") {
-        alert("¡Pago exitoso y reserva registrada con éxito!");
-        location.reload();
-      }
-    } catch (e) {
-      console.error("Error:", e);
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const status = urlParams.get("status");
-    const ref = urlParams.get("ref");
-
-    if (status === "success") {
-      alert("¡Pago aprobado con éxito! Tu seña ha sido registrada correctamente. Referencia: " + (ref || "N/A"));
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
-    // Inicializamos con el primer departamento
-    actualizarOpcionesPasajeros();
-    
-    // Y probamos de forma asíncrona si el Excel responde
-    cargarPreciosDesdeSheet();
-
-    const bungalowSelect = document.getElementById("bungalow");
-    bungalowSelect.addEventListener("change", () => {
-      selection = { checkin: null, checkout: null, nights: 0 };
-      document.getElementById("payment-section").style.display = "none";
-      
-      // Ajustamos pasajeros al cambiar de cuarto
-      actualizarOpcionesPasajeros();
-      
-      loadAvailabilityData();
-      loadOccupiedForRoom(bungalowSelect.value, true);
-    });
-
-    const pasajerosSelect = document.getElementById("pasajeros");
-    pasajerosSelect.addEventListener("change", () => {
-      updatePriceLine(); 
-    });
-
-    document.getElementById("moneda").addEventListener("change", updatePriceLine);
-    
-    loadOccupiedForRoom(bungalowSelect.value).then(() => {
-      loadAvailabilityData();
-    });
-  });
-</script>
-</body>
-</html>
+  
+  return fechasBloqueadas;
+}

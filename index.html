@@ -1,287 +1,716 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Motor de Reservas - Portillo Apartments</title>
-  
-  <!-- Flatpickr CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-  
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Reservas Portillo Apartments</title>
+
+  <!-- SDK oficial de PayPal para USD -->
+  <script src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD"></script>
+
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
-    .booking-card { max-width: 480px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-    h2 { text-align: center; color: #1a365d; margin-top: 0; }
-    .form-group { margin-bottom: 15px; }
-    label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.9em; }
-    select, input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 1em; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .price-box { background-color: #e2e8f0; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center; }
-    .price-box .amount { font-size: 1.5em; font-weight: bold; color: #2b6cb0; }
-    .btn-pay { width: 100%; background-color: #2b6cb0; color: white; border: none; padding: 12px; font-size: 1.1em; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 15px; transition: background 0.2s; }
-    .btn-pay:hover { background-color: #2c5282; }
-    .btn-pay:disabled { background-color: #cbd5e0; cursor: not-allowed; }
+    * { box-sizing: border-box; }
+
+    :root{
+      --pad: clamp(10px, 2.0vw, 18px);
+      --day: clamp(38px, 8.6vw, 46px);
+      --gap: clamp(7px, 1.4vw, 10px);
+    }
+
+    body {
+      margin: 0; 
+      padding: 0;
+      font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background-image: linear-gradient(rgba(18, 18, 18, 0.5), rgba(18, 18, 18, 0.7)), url('https://lh3.googleusercontent.com/d/17KYey5qeqhP_eaIKCG-K6PE-FIS48ci9');
+      background-size: cover; 
+      background-position: center; 
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      color: #fff; 
+      text-align: center;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: calc(var(--pad) + env(safe-area-inset-top)) var(--pad) calc(var(--pad) + env(safe-area-inset-bottom)) var(--pad);
+    }
+
+    .container{
+      background: rgba(18, 18, 18, 0.75);
+      border: 1px solid rgba(255,255,255,0.22);
+      padding: 20px 18px 22px;
+      border-radius: 22px;
+      max-width: 680px;
+      width: 100%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.40);
+      backdrop-filter: blur(6px);
+      position: relative;
+      overflow: hidden;
+      max-height: calc(100dvh - (var(--pad) * 2));
+      overflow: auto;
+    }
+
+    h2{ margin:0 0 8px; font-size: clamp(1.35rem, 3.6vw, 1.75rem); }
+    .subtitle{ margin:0 0 12px; font-size: clamp(.90rem, 2.6vw, .95rem); opacity:.92; }
+
+    .top-row{
+      display:flex;
+      justify-content:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin: 10px 0 6px;
+    }
+
+    select{
+      -webkit-appearance:none;
+      appearance:none;
+      padding: 11px 36px 11px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(0,0,0,0.4);
+      color:#fff;
+      font-size: clamp(.92rem, 2.5vw, .95rem);
+      font-weight:800;
+      min-width: min(160px, 92vw);
+      outline:none;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.22);
+    }
+
+    .select-wrap{ position:relative; display:inline-block; }
+    .select-wrap:after{
+      content:"▾";
+      position:absolute; right:14px; top:50%;
+      transform:translateY(-50%);
+      color:rgba(255,255,255,0.85);
+      pointer-events:none;
+    }
+
+    .price-line{
+      margin: 8px 0 10px;
+      font-size: 0.95rem;
+      font-weight: 900;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 8px 14px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .calendar-nav{ display:flex; justify-content:center; gap:10px; margin-top: 10px; }
+
+    button{
+      border:none; border-radius: 999px; padding: 10px 14px;
+      font-family:inherit; font-weight:900; cursor:pointer; color:#fff;
+      background: rgba(0, 51, 102, 0.92);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    }
+
+    .month-wrap{ display:flex; align-items:center; justify-content:center; margin: 12px 0 8px; }
+    #month-year{ margin:0; font-size: 1.1rem; background: rgba(0,0,0,0.3); padding: 8px 14px; border-radius: 999px; }
+
+    table{
+      width:100%; border-collapse: separate; border-spacing: var(--gap);
+      background: rgba(255,255,255,0.95); color:#000; border-radius: 16px; padding: 10px;
+    }
+    th{ color: rgba(0,0,0,0.55); font-size: 0.72rem; text-transform: uppercase; }
+    td > .day{
+      width: var(--day); height: var(--day); margin: 0 auto; border-radius: 999px;
+      display:grid; place-items:center; font-weight: 900; background: rgba(0,0,0,0.05);
+    }
+    td.available > .day{ background: rgba(200,247,197,0.95); cursor:pointer; }
+    td.unavailable > .day{ background: rgba(0,0,0,0.07); color: rgba(0,0,0,0.35); cursor:not-allowed; }
+    td.checkin > .day, td.checkout > .day{ background: #003366 !important; color:#fff !important; }
+    td.selected-day > .day{ background: rgba(10, 90, 170, 0.18) !important; }
+
+    .payment-info{
+      background: rgba(255,255,255,0.96); color:#000; padding: 14px;
+      border-radius: 16px; margin-top: 14px; text-align:left; font-size: .92rem;
+    }
+    .user-form { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+    .user-form input { padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
+
+    #pay-btn{
+      display:block; width:100%; margin-top: 10px; font-weight: 900; font-size: 1rem;
+      padding: 12px; border-radius: 999px; text-align:center; color:#fff;
+      background: #003366; border: none; cursor: pointer;
+    }
+    #pay-btn.disabled{ opacity:.5; pointer-events:none; }
+    #paypal-button-container { margin-top: 12px; }
   </style>
 </head>
+
 <body>
+  <div class="container">
+    <h2>Reservá tu Apart</h2>
+    <p class="subtitle">Elegí el departamento, moneda y seleccioná tus fechas</p>
 
-<div class="booking-card">
-  <h2>Portillo Apartments</h2>
-  <form id="reservaForm">
-    
-    <!-- PAGO / MONEDA -->
-    <div class="form-group">
-      <label for="moneda">Moneda de Pago:</label>
-      <select id="moneda" required>
-        <option value="ARS">Pesos Argentinos (ARS)</option>
-        <option value="USD">Dólares (USD / PayPal)</option>
-      </select>
+    <div class="top-row">
+      <span class="select-wrap">
+        <select id="bungalow">
+          <option value="Apart 1">Apart 1</option>
+          <option value="Apart 2">Apart 2</option>
+          <option value="Apart 3">Apart 3</option>
+          <option value="Apart 4">Apart 4</option>
+          <option value="Apart 6">Apart 6</option>
+          <option value="Apart 11">Apart 11</option>
+          <option value="Apart 12">Apart 12</option>
+          <option value="Apart 17">Apart 17</option>
+          <option value="Apart 14">Apart 14</option>
+          <option value="Apart 15">Apart 15</option>
+          <option value="Apart 16">Apart 16</option>
+        </select>
+      </span>
+      
+      <!-- Wrap del selector de pasajeros con ID para poder ocultarlo -->
+      <span class="select-wrap" id="wrap-pasajeros" style="display: none;">
+        <select id="pasajeros">
+          <!-- Las opciones se generarán solas -->
+        </select>
+      </span>
+
+      <span class="select-wrap">
+        <select id="moneda">
+          <option value="ARS">Pesos ARS (Seña)</option>
+          <option value="USD">Dólares USD (Total)</option>
+        </select>
+      </span>
     </div>
 
-    <!-- DEPARTAMENTO -->
-    <div class="form-group">
-      <label for="bungalow">Departamento:</label>
-      <select id="bungalow" required>
-        <option value="">Cargando alojamientos...</option>
-      </select>
+    <div id="price-line" class="price-line">Calculando...</div>
+
+    <div class="calendar-nav">
+      <button type="button" onclick="changeMonth(-1)">Mes anterior</button>
+      <button type="button" onclick="changeMonth(1)">Mes siguiente</button>
     </div>
 
-    <!-- PASAJEROS -->
-    <div class="form-group">
-      <label for="pasajeros">Pasajeros (Pax):</label>
-      <select id="pasajeros" required disabled>
-        <option value="">Seleccione Departamento</option>
-      </select>
+    <div id="calendar">
+      <div class="month-wrap"><h3 id="month-year"></h3></div>
+      <table>
+        <thead>
+          <tr><th>Dom</th><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th></tr>
+        </thead>
+        <tbody id="calendar-body"></tbody>
+      </table>
     </div>
 
-    <!-- FECHAS (2 Meses visibles para cruce de mes) -->
-    <div class="form-group">
-      <label for="fechas">Check-in / Check-out:</label>
-      <input type="text" id="fechas" placeholder="Seleccione el rango de fechas" required disabled>
-    </div>
+    <div class="payment-info" id="payment-section" style="display:none;">
+      <h4>Resumen</h4>
+      <p id="nights-info"></p>
+      <p id="amount-info"></p>
 
-    <!-- DATOS CLIENTE -->
-    <div class="grid-2">
-      <div class="form-group">
-        <label for="nombre">Nombre:</label>
-        <input type="text" id="nombre" required>
+      <div id="user-data-form" class="user-form" style="display: none;">
+        <input type="text" id="cli-nombre" placeholder="Nombre" required>
+        <input type="text" id="cli-apellido" placeholder="Apellido" required>
+        <input type="tel" id="cli-contacto" placeholder="WhatsApp / Teléfono" required>
       </div>
-      <div class="form-group">
-        <label for="apellido">Apellido:</label>
-        <input type="text" id="apellido" required>
-      </div>
+
+      <div id="paypal-button-container" style="display:none;"></div>
+      <button id="pay-btn" type="button" class="disabled">Completar datos</button>
     </div>
-
-    <div class="form-group">
-      <label for="contacto">Contacto (WhatsApp):</label>
-      <input type="tel" id="contacto" placeholder="+549..." required>
-    </div>
-
-    <!-- RESUMEN DE COTIZACIÓN -->
-    <div class="price-box">
-      <div>Total a Pagar (<span id="txtNoches">0</span> noches):</div>
-      <div class="amount"><span id="txtSimbolo">$</span><span id="txtMonto">0</span> <span id="txtMoneda">ARS</span></div>
-    </div>
-
-    <button type="submit" id="btnPagar" class="btn-pay" disabled>PAGAR Y RESERVAR</button>
-  </form>
-</div>
-
-<!-- Flatpickr JS -->
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+  </div>
 
 <script>
-  // ATENCIÓN: Poner aquí la URL desplegada de tu Google Apps Script
-  const APPS_SCRIPT_URL = "REEMPLAZAR_CON_TU_URL_DE_APPS_SCRIPT";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH61JMbyMvV2lg2WQ2hPmCFwbAWcEQtWQAPoGBcTCTVpX-3in2aIIqNB1xTEkg02Q2ig/exec";
+  const TIPO_CAMBIO_USD = 1000; 
 
-  let preciosMatrix = {};
-  let flatpickrInstancia = null;
-  let checkinFinal = "";
-  let checkoutFinal = "";
-  let totalNoches = 0;
-  let montoCalculado = 0;
+  const preciosFallback = {
+    "Apart 1": { "2": 53000 },
+    "Apart 2": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
+    "Apart 3": { "2": 60000 },
+    "Apart 4": { "2": 63000 },
+    "Apart 6": { "2": 60000 },
+    "Apart 11": { "2": 53000 },
+    "Apart 12": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
+    "Apart 14": { "2": 58000 },
+    "Apart 15": { "2": 63000, "3": 80000, "4": 95000 },
+    "Apart 16": { "2": 56000 },
+    "Apart 17": { "2": 57000 }
+  };
 
-  // 1. Cargar la matriz de precios desde la pestaña TARIFAS
-  async function initMotor() {
+  let preciosDinámicos = JSON.parse(JSON.stringify(preciosFallback)); 
+  
+  let currentDate = new Date();
+  const occupiedCache = new Map();
+  let selection = { checkin: null, checkout: null, nights: 0 };
+  let paypalInitialized = false;
+
+  const capacidadesMaximas = {
+    "Apart 2": 5,
+    "Apart 12": 5,
+    "Apart 15": 4
+  };
+
+  function actualizarOpcionesPasajeros() {
+    const room = document.getElementById("bungalow").value;
+    const paxSelect = document.getElementById("pasajeros");
+    const wrapPasajeros = document.getElementById("wrap-pasajeros");
+    
+    const maxPax = capacidadesMaximas[room] || 2; 
+    let valorActual = parseInt(paxSelect.value) || 2; 
+
+    paxSelect.innerHTML = "";
+
+    if (maxPax === 2) {
+      wrapPasajeros.style.display = "none";
+      const option = document.createElement("option");
+      option.value = 2;
+      option.textContent = "2 Personas";
+      paxSelect.appendChild(option);
+      paxSelect.value = 2;
+    } else {
+      wrapPasajeros.style.display = "inline-block";
+      for (let i = 2; i <= maxPax; i++) {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = `${i} Personas`;
+        paxSelect.appendChild(option);
+      }
+      
+      if (valorActual < 2) valorActual = 2;
+      paxSelect.value = valorActual > maxPax ? maxPax : valorActual;
+    }
+
+    updatePriceLine();
+  }
+
+  function fmtARS(n){
+    return new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(n);
+  }
+
+  function obtenerPrecioBase() {
+    const room = document.getElementById("bungalow").value;
+    const pax = document.getElementById("pasajeros").value;
+    
+    if (!preciosDinámicos[room]) return 0;
+
+    let precio = preciosDinámicos[room][pax];
+    if (!precio) {
+      const capacidades = Object.keys(preciosDinámicos[room]);
+      const maxCapacidad = Math.max(...capacidades);
+      precio = preciosDinámicos[room][maxCapacidad];
+    }
+    return precio;
+  }
+
+  function updatePriceLine(){
+    const room = document.getElementById("bungalow").value;
+    const moneda = document.getElementById("moneda").value;
+    const pax = document.getElementById("pasajeros").value;
+    const el = document.getElementById("price-line");
+    
+    const precioArs = obtenerPrecioBase();
+
+    if (el) {
+      if (precioArs === 0) {
+        el.textContent = "Revisá los precios de este Apart";
+        return;
+      }
+
+      const isFixed = document.getElementById("wrap-pasajeros").style.display === "none";
+      const textoPax = isFixed ? "" : ` (${pax} pax)`;
+
+      if (moneda === "ARS") {
+        el.textContent = `${room}${textoPax} · ${fmtARS(precioArs)} por noche`;
+      } else {
+        const precioUsd = (precioArs / TIPO_CAMBIO_USD).toFixed(0);
+        el.textContent = `${room}${textoPax} · $${precioUsd} USD por noche`;
+      }
+    }
+    updateSummary(); 
+  }
+
+  async function cargarPreciosDesdeSheet() {
     try {
-      const resp = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
-      preciosMatrix = await resp.json();
-
-      const selectApart = document.getElementById("bungalow");
-      selectApart.innerHTML = '<option value="">-- Seleccionar Apartamento --</option>';
-
-      Object.keys(preciosMatrix).forEach(apart => {
-        const opt = document.createElement("option");
-        opt.value = apart;
-        opt.textContent = apart;
-        selectApart.appendChild(opt);
-      });
+      const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
+      const data = await response.json();
+      
+      if (data && Object.keys(data).length > 0) {
+        preciosDinámicos = data;
+        updatePriceLine();
+      }
     } catch (e) {
-      alert("Error al conectar con la base de datos de tarifas.");
-      console.error(e);
+      console.warn("No se pudo leer el Excel. Usando precios de respaldo.", e);
+      updatePriceLine(); 
     }
   }
 
-  // 2. Al seleccionar el departamento, habilitar los pasajeros correspondientes
-  document.getElementById("bungalow").addEventListener("change", async function() {
-    const apart = this.value;
-    const selectPax = document.getElementById("pasajeros");
-    const inputFechas = document.getElementById("fechas");
+  function toISO(dateObj){
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth()+1).padStart(2,"0");
+    const d = String(dateObj.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
 
-    selectPax.innerHTML = "";
-    resetearTotales();
+  function fmtISO(iso){
+    if(!iso) return "";
+    const [y,m,d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  }
 
-    if (!apart || !preciosMatrix[apart]) {
-      selectPax.disabled = true;
-      inputFechas.disabled = true;
+  function isoToDate(iso){
+    const [y,m,d] = iso.split("-");
+    return new Date(Number(y), Number(m)-1, Number(d));
+  }
+
+  function diffNights(checkinISO, checkoutISO){
+    return Math.round((isoToDate(checkoutISO) - isoToDate(checkinISO)) / (1000*60*60*24));
+  }
+
+  function enumerateNights(checkinISO, checkoutISO){
+    const out = [];
+    const cur = new Date(isoToDate(checkinISO));
+    const end = isoToDate(checkoutISO);
+    while(cur < end){
+      out.push(toISO(cur));
+      cur.setDate(cur.getDate()+1);
+    }
+    return out;
+  }
+
+  function clearCalendarHighlights(){
+    document.querySelectorAll("td.selected-day, td.checkin, td.checkout")
+      .forEach(td => td.classList.remove("selected-day","checkin","checkout"));
+  }
+
+  function highlightRange(checkinISO, checkoutISO){
+    if (!checkinISO || !checkoutISO) return;
+    enumerateNights(checkinISO, checkoutISO).forEach(iso => {
+      const td = document.querySelector(`td[data-fecha="${iso}"]`);
+      if (td) td.classList.add("selected-day");
+    });
+  }
+
+  function applySelectionHighlights() {
+    clearCalendarHighlights();
+    if (selection.checkin) {
+      const checkinTd = document.querySelector(`td[data-fecha="${selection.checkin}"]`);
+      if (checkinTd) checkinTd.classList.add("checkin");
+    }
+    if (selection.checkout) {
+      highlightRange(selection.checkin, selection.checkout);
+      const checkoutTd = document.querySelector(`td[data-fecha="${selection.checkout}"]`);
+      if (checkoutTd) checkoutTd.classList.add("checkout");
+    }
+  }
+
+  async function loadOccupiedForRoom(room, forceRefresh = false){
+    if (!forceRefresh && occupiedCache.has(room)) {
+      return occupiedCache.get(room);
+    }
+    try {
+      const r = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(room)}`, { cache: "no-store" });
+      const rows = await r.json();
+      const occupied = new Set();
+      for (let i = 1; i < rows.length; i++){
+        const rr = rows[i];
+        if (!rr || rr.length === 0) continue;
+        if (rr[0]) occupied.add(String(rr[0]).trim());
+      }
+      occupiedCache.set(room, occupied);
+      return occupied;
+    } catch (e) {
+      console.warn("Error cargando disponibilidad:", e);
+      return new Set();
+    }
+  }
+
+  async function loadAvailabilityData(){
+    const room = document.getElementById("bungalow").value;
+    const body = document.getElementById("calendar-body");
+    
+    let occupied = occupiedCache.get(room) || new Set();
+    
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    document.getElementById("month-year").textContent = currentDate.toLocaleString("es-ES", { month: "long", year: "numeric" });
+    body.innerHTML = "";
+
+    let row = document.createElement("tr");
+    for (let i=0; i<firstDay; i++) row.appendChild(document.createElement("td"));
+
+    for (let day=1; day<=daysInMonth; day++){
+      const date = new Date(year, month, day);
+      const td = document.createElement("td");
+      td.innerHTML = `<div class="day">${day}</div>`;
+      const iso = toISO(date);
+      td.dataset.fecha = iso;
+
+      if (date < new Date(new Date().setHours(0,0,0,0))) {
+        td.className = "unavailable";
+      } else if (occupied.has(iso)){
+        td.className = "unavailable";
+      } else {
+        td.className = "available";
+        td.onclick = () => onDayClick(iso);
+      }
+      row.appendChild(td);
+      if (date.getDay() === 6){ body.appendChild(row); row = document.createElement("tr"); }
+    }
+    if (row.children.length > 0) body.appendChild(row);
+    
+    // Aplica las marcas de selección si el rango cruza entre meses
+    applySelectionHighlights();
+    updatePriceLine();
+
+    loadOccupiedForRoom(room, true).then(freshOccupied => {
+      freshOccupied.forEach(iso => {
+        const td = document.querySelector(`td[data-fecha="${iso}"]`);
+        if (td && !td.classList.contains("checkin") && !td.classList.contains("checkout")) {
+          td.className = "unavailable";
+          td.onclick = null;
+        }
+      });
+    });
+  }
+
+  function changeMonth(offset){
+    currentDate.setMonth(currentDate.getMonth() + offset);
+    loadAvailabilityData();
+  }
+
+  function onDayClick(isoDate){
+    const room = document.getElementById("bungalow").value;
+    const occupied = occupiedCache.get(room) || new Set();
+
+    if (!selection.checkin || selection.checkout){
+      selection.checkin = isoDate;
+      selection.checkout = null;
+      applySelectionHighlights();
+      updateSummary();
       return;
     }
 
-    // Filtra y crea solo las opciones de pasajeros configuradas en TARIFAS
-    const opcionesPax = preciosMatrix[apart];
-    selectPax.innerHTML = '<option value="">-- Cantidad de Personas --</option>';
-
-    Object.keys(opcionesPax).forEach(pax => {
-      const opt = document.createElement("option");
-      opt.value = pax;
-      opt.textContent = `${pax} Personas`;
-      selectPax.appendChild(opt);
-    });
-
-    selectPax.disabled = false;
-    await prepararCalendarioFechas(apart);
-  });
-
-  // 3. Cargar fechas ocupadas y configurar calendario en vista de 2 meses
-  async function prepararCalendarioFechas(apart) {
-    const inputFechas = document.getElementById("fechas");
-    inputFechas.disabled = true;
-
-    try {
-      const resp = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(apart)}`);
-      const ocupadasData = await resp.json();
-      
-      const fechasBloqueadas = ocupadasData.slice(1).map(item => item[0]);
-
-      if (flatpickrInstancia) flatpickrInstancia.destroy();
-
-      flatpickrInstancia = flatpickr("#fechas", {
-        mode: "range",
-        locale: "es",
-        dateFormat: "Y-m-d",
-        showMonths: 2, // Permite ver 2 meses simultáneos para reservas cruzadas (ej: 28 al 02)
-        minDate: "today",
-        disable: fechasBloqueadas,
-        onChange: function(selectedDates) {
-          if (selectedDates.length === 2) {
-            const checkin = selectedDates[0];
-            const checkout = selectedDates[1];
-
-            checkinFinal = flatpickr.formatDate(checkin, "d/m/Y");
-            checkoutFinal = flatpickr.formatDate(checkout, "d/m/Y");
-
-            const diff = Math.abs(checkout - checkin);
-            totalNoches = Math.ceil(diff / (1000 * 60 * 60 * 24));
-
-            recalcularTotales();
-          } else {
-            resetearTotales();
-          }
-        }
-      });
-
-      inputFechas.disabled = false;
-    } catch (e) {
-      console.error("Error al obtener disponibilidad:", e);
+    if (isoDate <= selection.checkin){
+      selection.checkin = isoDate;
+      selection.checkout = null;
+      applySelectionHighlights();
+      updateSummary();
+      return;
     }
+
+    if (enumerateNights(selection.checkin, isoDate).some(n => occupied.has(n))){
+      alert("Hay una noche ocupada en el rango seleccionado.");
+      return;
+    }
+
+    selection.checkout = isoDate;
+    selection.nights = diffNights(selection.checkin, selection.checkout);
+    applySelectionHighlights();
+    updateSummary();
   }
 
-  // 4. Cambios en Pax o Moneda
-  document.getElementById("pasajeros").addEventListener("change", recalcularTotales);
-  document.getElementById("moneda").addEventListener("change", function() {
-    const monedaSel = this.value;
-    document.getElementById("txtMoneda").textContent = monedaSel;
-    document.getElementById("txtSimbolo").textContent = monedaSel === "ARS" ? "$" : "USD$ ";
-    recalcularTotales();
-  });
-
-  function recalcularTotales() {
-    const apart = document.getElementById("bungalow").value;
+  function updateSummary(){
+    const { checkin, checkout, nights } = selection;
+    const room = document.getElementById("bungalow").value;
+    const moneda = document.getElementById("moneda").value;
     const pax = document.getElementById("pasajeros").value;
-    const btnPagar = document.getElementById("btnPagar");
+    
+    if (!checkin) { document.getElementById("payment-section").style.display = "none"; return; }
+    document.getElementById("payment-section").style.display = "block";
 
-    if (apart && pax && totalNoches > 0 && preciosMatrix[apart][pax]) {
-      const precioNoche = preciosMatrix[apart][pax];
-      montoCalculado = precioNoche * totalNoches;
+    const userForm = document.getElementById("user-data-form");
+    const payBtn = document.getElementById("pay-btn");
+    const paypalContainer = document.getElementById("paypal-button-container");
 
-      document.getElementById("txtNoches").textContent = totalNoches;
-      document.getElementById("txtMonto").textContent = montoCalculado.toLocaleString("es-AR");
-      btnPagar.disabled = false;
+    const isFixed = document.getElementById("wrap-pasajeros").style.display === "none";
+    const textoPax = isFixed ? "" : ` (${pax} pax)`;
+
+    if (!checkout){
+      document.getElementById("nights-info").textContent = `${room}${textoPax} · Ingreso: ${fmtISO(checkin)}`;
+      document.getElementById("amount-info").textContent = `Elegí la fecha de salida.`;
+      userForm.style.display = "none";
+      payBtn.style.display = "block";
+      payBtn.classList.add("disabled");
+      payBtn.textContent = "Completar datos";
+      paypalContainer.style.display = "none";
+      return;
+    }
+
+    document.getElementById("nights-info").textContent = `${room}${textoPax} · ${nights} noches (${fmtISO(checkin)} al ${fmtISO(checkout)})`;
+    userForm.style.display = "flex";
+
+    const precioBase = obtenerPrecioBase();
+    
+    if (moneda === "ARS") {
+      const montoTotal = nights * precioBase;
+      document.getElementById("amount-info").textContent = `Total estimado (ARS): ${fmtARS(montoTotal)}`;
+      payBtn.style.display = "block";
+      payBtn.classList.remove("disabled");
+      payBtn.textContent = "Pagar con Mercado Pago (ARS)";
+      payBtn.onclick = () => procesarPagoARS(montoTotal);
+      paypalContainer.style.display = "none";
     } else {
-      btnPagar.disabled = true;
+      const precioBaseUSD = parseFloat((precioBase / TIPO_CAMBIO_USD).toFixed(2));
+      const montoTotal = nights * precioBaseUSD;
+      document.getElementById("amount-info").textContent = `Total estimado (USD): $${montoTotal.toFixed(2)} USD`;
+      payBtn.style.display = "none";
+      paypalContainer.style.display = "block";
+
+      if (!paypalInitialized && window.paypal) {
+        paypalInitialized = true;
+        paypal.Buttons({
+          createOrder: function(data, actions) {
+            const nombre = document.getElementById("cli-nombre").value.trim();
+            const apellido = document.getElementById("cli-apellido").value.trim();
+            const contacto = document.getElementById("cli-contacto").value.trim();
+            if (!nombre || !apellido || !contacto) {
+              alert("Por favor completá tu nombre, apellido y WhatsApp antes de pagar.");
+              throw new Error("Datos incompletos");
+            }
+            const currentNights = selection.nights;
+            const currentTotal = currentNights * parseFloat((obtenerPrecioBase() / TIPO_CAMBIO_USD).toFixed(2));
+
+            return actions.order.create({
+              purchase_units: [{
+                description: `Reserva de ${currentNights} noches en ${room} (${document.getElementById("pasajeros").value} pax)`,
+                amount: { value: currentTotal.toFixed(2) }
+              }]
+            });
+          },
+          onApprove: function(data, actions) {
+            return actions.order.capture().then(function(details) {
+              const currentTotal = selection.nights * parseFloat((obtenerPrecioBase() / TIPO_CAMBIO_USD).toFixed(2));
+              enviarReservaAlServidor("USD", currentTotal);
+            });
+          }
+        }).render('#paypal-button-container');
+      }
     }
   }
 
-  function resetearTotales() {
-    totalNoches = 0;
-    montoCalculado = 0;
-    document.getElementById("txtNoches").textContent = "0";
-    document.getElementById("txtMonto").textContent = "0";
-    document.getElementById("btnPagar").disabled = true;
-  }
+  async function procesarPagoARS(montoTotal) {
+    const nombre = document.getElementById("cli-nombre").value.trim();
+    const apellido = document.getElementById("cli-apellido").value.trim();
+    const contacto = document.getElementById("cli-contacto").value.trim();
+    const payBtn = document.getElementById("pay-btn");
 
-  // 5. Envío de datos al Apps Script
-  document.getElementById("reservaForm").addEventListener("submit", async function(e) {
-    e.preventDefault();
-    const btnPagar = document.getElementById("btnPagar");
-    btnPagar.disabled = true;
-    btnPagar.textContent = "Procesando...";
+    if (!nombre || !apellido || !contacto) {
+      payBtn.textContent = "¡Completá tus datos para continuar!";
+      payBtn.style.background = "#b32a2a";
+      setTimeout(() => {
+        payBtn.textContent = "Pagar con Mercado Pago (ARS)";
+        payBtn.style.background = "#003366";
+      }, 3000);
+      return;
+    }
 
+    payBtn.textContent = "Generando pago automatizado...";
+    payBtn.classList.add("disabled");
+
+    const room = document.getElementById("bungalow").value;
+    const pax = document.getElementById("pasajeros").value;
     const payload = {
-      bungalow: document.getElementById("bungalow").value,
-      pasajeros: document.getElementById("pasajeros").value,
-      checkin: checkinFinal,
-      checkout: checkoutFinal,
-      noches: totalNoches,
-      montoTotal: montoCalculado,
-      moneda: document.getElementById("moneda").value,
-      nombre: document.getElementById("nombre").value,
-      apellido: document.getElementById("apellido").value,
-      contacto: document.getElementById("contacto").value
+      bungalow: room,
+      pasajeros: pax, 
+      checkin: selection.checkin,
+      checkout: selection.checkout,
+      nombre: nombre,
+      apellido: apellido,
+      contacto: contacto,
+      moneda: "ARS",
+      noches: selection.nights,
+      montoTotal: montoTotal
     };
 
     try {
-      const resp = await fetch(APPS_SCRIPT_URL, {
+      const response = await fetch(APPS_SCRIPT_URL, {
         method: "POST",
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
       });
+      
+      const result = await response.json();
 
-      const res = await resp.json();
-
-      if (res.status === "success") {
-        if (payload.moneda === "ARS" && res.init_point) {
-          window.location.href = res.init_point;
-        } else {
-          alert("¡Reserva procesada con éxito!");
-          location.reload();
-        }
+      if (result.status === "success" && result.init_point) {
+        window.location.href = result.init_point;
       } else {
-        alert("Error: " + res.message);
-        btnPagar.disabled = false;
-        btnPagar.textContent = "PAGAR Y RESERVAR";
+        console.error("Detalle del error:", result.message);
+        payBtn.textContent = result.message ? result.message : "Error desconocido en pasarela";
+        payBtn.style.background = "#b32a2a";
       }
-    } catch (err) {
-      alert("Error al comunicarse con el servidor.");
-      console.error(err);
-      btnPagar.disabled = false;
-      btnPagar.textContent = "PAGAR Y RESERVAR";
+    } catch (e) {
+      console.error("Error:", e);
+      payBtn.textContent = "Error de conexión con el servidor";
+      payBtn.style.background = "#b32a2a";
     }
+  }
+
+  async function enviarReservaAlServidor(moneda, montoTotal) {
+    const nombre = document.getElementById("cli-nombre").value.trim();
+    const apellido = document.getElementById("cli-apellido").value.trim();
+    const contacto = document.getElementById("cli-contacto").value.trim();
+    const room = document.getElementById("bungalow").value;
+    const pax = document.getElementById("pasajeros").value;
+
+    const payload = {
+      bungalow: room,
+      pasajeros: pax,
+      checkin: selection.checkin,
+      checkout: selection.checkout,
+      nombre: nombre,
+      apellido: apellido,
+      contacto: contacto,
+      moneda: moneda,
+      noches: selection.nights,
+      montoTotal: montoTotal
+    };
+
+    try {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+      });
+      
+      const result = await response.json();
+
+      if (result.status === "success" && moneda === "USD") {
+        alert("¡Pago exitoso y reserva registrada con éxito!");
+        location.reload();
+      }
+    } catch (e) {
+      console.error("Error:", e);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get("status");
+    const ref = urlParams.get("ref");
+
+    if (status === "success") {
+      alert("¡Pago aprobado con éxito! Tu seña ha sido registrada correctamente. Referencia: " + (ref || "N/A"));
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    actualizarOpcionesPasajeros();
+    cargarPreciosDesdeSheet();
+
+    const bungalowSelect = document.getElementById("bungalow");
+    bungalowSelect.addEventListener("change", () => {
+      selection = { checkin: null, checkout: null, nights: 0 };
+      document.getElementById("payment-section").style.display = "none";
+      
+      actualizarOpcionesPasajeros();
+      
+      loadAvailabilityData();
+      loadOccupiedForRoom(bungalowSelect.value, true);
+    });
+
+    const pasajerosSelect = document.getElementById("pasajeros");
+    pasajerosSelect.addEventListener("change", () => {
+      updatePriceLine(); 
+    });
+
+    document.getElementById("moneda").addEventListener("change", updatePriceLine);
+    
+    loadOccupiedForRoom(bungalowSelect.value).then(() => {
+      loadAvailabilityData();
+    });
   });
-
-  // Ejecutar al cargar la página
-  initMotor();
 </script>
-
 </body>
 </html>

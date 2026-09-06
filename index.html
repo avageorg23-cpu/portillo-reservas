@@ -1,281 +1,341 @@
-const MP_ACCESS_TOKEN = "APP_USR-1593830035169791-092513-209e24a92da81baab573b2579b6d80bc-359434421"; 
-const EMAIL_NOTIFICACIONES = "avageor23@gmail.com"; 
-
-// ==========================================
-// 1. RECEPCIÓN DE PAGOS Y RESERVAS (POST)
-// ==========================================
-function doPost(e) {
-  try {
-    if (!e || !e.postData || !e.postData.contents) {
-      return ContentService.createTextOutput(JSON.stringify({
-        status: "error", message: "Error: Sin datos POST"
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    const data = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    let sheet = ss.getSheetByName(data.bungalow);
-    if (!sheet) {
-      sheet = ss.getActiveSheet(); 
-    }
-
-    const fechaRegistro = Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "dd/MM/yyyy HH:mm");
-
-    if (data.moneda === "ARS") {
-      const externalReference = "AVAGE-" + data.bungalow.replace(/\s+/g, '') + "-" + data.checkin + "-" + Date.now();
-
-      const preferenceData = {
-        items: [{
-          title: "Reserva " + data.noches + " noches en " + data.bungalow + " (" + data.pasajeros + " pax)",
-          quantity: 1,
-          unit_price: Number(data.montoTotal),
-          currency_id: "ARS"
-        }],
-        payer: {
-          name: data.nombre,
-          surname: data.apellido,
-          email: "cliente@avage.com.ar"
-        },
-        external_reference: externalReference, 
-        back_urls: {
-          success: "https://avage.com.ar/?status=success&ref=" + externalReference,
-          failure: "https://avage.com.ar/?status=failure",
-          pending: "https://avage.com.ar/?status=pending"
-        },
-        auto_return: "approved"
-      };
-
-      const options = {
-        method: "post",
-        contentType: "application/json",
-        headers: { "Authorization": "Bearer " + MP_ACCESS_TOKEN },
-        payload: JSON.stringify(preferenceData),
-        muteHttpExceptions: true
-      };
-
-      const response = UrlFetchApp.fetch("https://api.mercadopago.com/checkout/preferences", options);
-      const responseCode = response.getResponseCode();
-      const responseText = response.getContentText();
-
-      if (responseCode !== 200 && responseCode !== 201) {
-        return ContentService.createTextOutput(JSON.stringify({
-          status: "error",
-          message: "MP " + responseCode + ": " + responseText.substring(0, 50)
-        })).setMimeType(ContentService.MimeType.JSON);
-      }
-
-      const mpResult = JSON.parse(responseText);
-      const estadoReserva = "Pendiente de Pago (Mercado Pago)";
-
-      // INSERCIÓN DE RESERVA (Columna K = Moneda ARS)
-      const datosARS = [
-        fechaRegistro, 
-        estadoReserva, 
-        data.nombre, 
-        data.apellido, 
-        data.contacto, 
-        data.checkin, 
-        data.checkout, 
-        data.pasajeros, 
-        data.montoTotal, 
-        externalReference,
-        data.moneda
-      ];
-      insertarFilaOrdenada(sheet, datosARS);
-
-      enviarCorreoNotificacion(data, estadoReserva, externalReference);
-
-      return ContentService.createTextOutput(JSON.stringify({
-        status: "success",
-        init_point: mpResult.init_point
-      })).setMimeType(ContentService.MimeType.JSON);
-
-    } else {
-      const referenciaUSD = "USD-" + Date.now();
-      const estadoReserva = "Completado / PayPal";
-
-      // INSERCIÓN DE RESERVA (Columna K = Moneda USD)
-      const datosUSD = [
-        fechaRegistro, 
-        estadoReserva, 
-        data.nombre, 
-        data.apellido, 
-        data.contacto, 
-        data.checkin, 
-        data.checkout, 
-        data.pasajeros, 
-        data.montoTotal, 
-        referenciaUSD,
-        data.moneda
-      ];
-      insertarFilaOrdenada(sheet, datosUSD);
-
-      enviarCorreoNotificacion(data, estadoReserva, referenciaUSD);
-
-      return ContentService.createTextOutput(JSON.stringify({
-        status: "success"
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error", message: "Excepcion: " + error.message
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-// ==========================================
-// 2. PETICIONES DESDE LA WEB (GET)
-// ==========================================
-function doGet(e) {
-  const action = e.parameter.action;
-
-  if (action === "getPrecios") {
-    const precios = obtenerPreciosEscalonados();
-    return ContentService.createTextOutput(JSON.stringify(precios))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
-  if (action === "getDispo") {
-    const room = e.parameter.room;
-    const ocupadas = obtenerFechasOcupadas(room);
-    return ContentService.createTextOutput(JSON.stringify(ocupadas))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
-  return ContentService.createTextOutput(JSON.stringify({ error: "Acción no válida" }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// ==========================================
-// 3. FUNCIONES AUXILIARES Y CORREO
-// ==========================================
-
-function insertarFilaOrdenada(sheet, arrayDatos) {
-  sheet.appendRow(arrayDatos);
-}
-
-function enviarCorreoNotificacion(data, estado, referencia) {
-  const asunto = `NUEVA RESERVA (${data.moneda}): ${data.bungalow} - ${data.nombre} ${data.apellido}`;
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reserva - Portillo Apartments</title>
   
-  const mensajeHTML = `
-    <h2 style="color: #003366;">¡Ha ingresado una nueva reserva!</h2>
-    <hr>
-    <h3>👤 Datos del Cliente</h3>
-    <ul>
-      <li><b>Nombre:</b> ${data.nombre} ${data.apellido}</li>
-      <li><b>Contacto (WhatsApp):</b> ${data.contacto}</li>
-    </ul>
+  <!-- CSS de Flatpickr (Calendario de reservas) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 20px;
+    }
+    .reserva-container {
+      max-width: 500px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    h2 {
+      text-align: center;
+      color: #003366;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .resumen-pago {
+      background: #eef2f7;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 15px;
+    }
+    .monto-total {
+      font-size: 1.2em;
+      font-weight: bold;
+      color: #003366;
+    }
+    button {
+      width: 100%;
+      background-color: #003366;
+      color: white;
+      padding: 12px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 15px;
+    }
+    button:hover {
+      background-color: #002244;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+<div class="reserva-container">
+  <h2>Reservar Alojamiento</h2>
+  
+  <form id="formReserva">
+    <!-- Selección de Departamento -->
+    <div class="form-group">
+      <label for="bungalow">Departamento:</label>
+      <select id="bungalow" required>
+        <option value="">Cargando departamentos...</option>
+      </select>
+    </div>
+
+    <!-- Selección de Pasajeros -->
+    <div class="form-group">
+      <label for="pasajeros">Cantidad de personas:</label>
+      <select id="pasajeros" required disabled>
+        <option value="">Seleccione departamento primero</option>
+      </select>
+    </div>
+
+    <!-- Selección de Fechas -->
+    <div class="form-group">
+      <label for="rangoFechas">Fechas Check-in / Check-out:</label>
+      <input type="text" id="rangoFechas" placeholder="Seleccione sus fechas" required disabled>
+    </div>
+
+    <!-- Selección de Moneda -->
+    <div class="form-group">
+      <label for="moneda">Moneda de Pago:</label>
+      <select id="moneda" required>
+        <option value="ARS">Pesos Argentinos (ARS)</option>
+        <option value="USD">Dólares (USD / PayPal)</option>
+      </select>
+    </div>
+
+    <!-- Datos del Cliente -->
+    <div class="form-group">
+      <label for="nombre">Nombre:</label>
+      <input type="text" id="nombre" required placeholder="Tu nombre">
+    </div>
+
+    <div class="form-group">
+      <label for="apellido">Apellido:</label>
+      <input type="text" id="apellido" required placeholder="Tu apellido">
+    </div>
+
+    <div class="form-group">
+      <label for="contacto">Teléfono / WhatsApp:</label>
+      <input type="tel" id="contacto" required placeholder="Ej: +5493548123456">
+    </div>
+
+    <!-- Resumen de Costo -->
+    <div class="resumen-pago">
+      <p>Noches: <span id="cantNoches">0</span></p>
+      <p class="monto-total">Total: <span id="montoTotalText">$0</span> <span id="monedaText">ARS</span></p>
+    </div>
+
+    <button type="submit" id="btnPagar" disabled>Procesar Reserva</button>
+  </form>
+</div>
+
+<!-- JS de Flatpickr -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+
+<script>
+  // URL de tu Web App desplegada en Google Apps Script
+  const APPS_SCRIPT_URL = "REEMPLAZAR_CON_TU_URL_DE_APPS_SCRIPT";
+
+  let mapaTarifas = {};
+  let flatpickrInstancia = null;
+  let checkinSeleccionado = "";
+  let checkoutSeleccionado = "";
+  let nochesCalculadas = 0;
+  let totalCalculado = 0;
+
+  // 1. Cargar Tarifas desde Apps Script al iniciar
+  async function cargarTarifas() {
+    try {
+      const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
+      mapaTarifas = await response.json();
+      
+      const selectApart = document.getElementById("bungalow");
+      selectApart.innerHTML = '<option value="">-- Seleccionar Apartamento --</option>';
+
+      Object.keys(mapaTarifas).forEach(apart => {
+        const option = document.createElement("option");
+        option.value = apart;
+        option.textContent = apart;
+        selectApart.appendChild(option);
+      });
+    } catch (error) {
+      alert("Error al cargar las tarifas. Verifique la conexión.");
+      console.error(error);
+    }
+  }
+
+  // 2. Al cambiar el departamento, actualizar opciones de PAX y disponibilidad de fechas
+  document.getElementById("bungalow").addEventListener("change", async function() {
+    const apart = this.value;
+    const selectPax = document.getElementById("pasajeros");
+    const inputFechas = document.getElementById("rangoFechas");
+
+    selectPax.innerHTML = "";
+    resetearTotales();
+
+    if (!apart || !mapaTarifas[apart]) {
+      selectPax.disabled = true;
+      inputFechas.disabled = true;
+      return;
+    }
+
+    // Poblar según PAX permitidos en la pestaña TARIFAS
+    const opcionesPax = mapaTarifas[apart];
+    selectPax.innerHTML = '<option value="">-- Cantidad de Personas --</option>';
     
-    <h3>🏨 Datos del Alojamiento</h3>
-    <ul>
-      <li><b>Departamento:</b> ${data.bungalow}</li>
-      <li><b>Cantidad de Personas:</b> ${data.pasajeros}</li>
-      <li><b>Fecha de Check-in:</b> ${data.checkin}</li>
-      <li><b>Fecha de Check-out:</b> ${data.checkout}</li>
-      <li><b>Cantidad de Noches:</b> ${data.noches}</li>
-    </ul>
-
-    <h3>💰 Detalles del Pago</h3>
-    <ul>
-      <li><b>Monto:</b> ${data.montoTotal} ${data.moneda}</li>
-      <li><b>Estado:</b> ${estado}</li>
-      <li><b>Referencia:</b> ${referencia}</li>
-    </ul>
-    <br>
-    <p><i>Este correo fue generado automáticamente por el sistema de reservas.</i></p>
-  `;
-
-  try {
-    MailApp.sendEmail({
-      to: EMAIL_NOTIFICACIONES,
-      subject: asunto,
-      htmlBody: mensajeHTML
+    Object.keys(opcionesPax).forEach(pax => {
+      const option = document.createElement("option");
+      option.value = pax;
+      option.textContent = `${pax} Personas`;
+      selectPax.appendChild(option);
     });
-  } catch (error) {
-    console.error("No se pudo enviar el correo: " + error.message);
-  }
-}
 
-function obtenerPreciosEscalonados() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetTarifas = ss.getSheetByName("TARIFAS");
-  const listaPrecios = {};
-
-  if (!sheetTarifas) return listaPrecios;
-
-  const datos = sheetTarifas.getDataRange().getValues();
-  if (datos.length < 2) return listaPrecios;
-
-  for (let i = 1; i < datos.length; i++) {
-    const fila = datos[i];
-    const nombreApart = fila[0] ? fila[0].toString().trim() : "";
+    selectPax.disabled = false;
     
-    if (!nombreApart) continue;
+    // Cargar fechas ocupadas e inicializar calendario de 2 meses
+    await cargarCalendarioOcupados(apart);
+  });
 
-    const preciosPorPasajero = {};
+  // 3. Inicializar Flatpickr con vista de 2 meses simultáneos
+  async function cargarCalendarioOcupados(apart) {
+    const inputFechas = document.getElementById("rangoFechas");
+    inputFechas.disabled = true;
 
-    if (fila[1] !== "" && fila[1] !== null) preciosPorPasajero[2] = fila[1];
-    if (fila[2] !== "" && fila[2] !== null) preciosPorPasajero[3] = fila[2];
-    if (fila[3] !== "" && fila[3] !== null) preciosPorPasajero[4] = fila[3];
-    if (fila[4] !== "" && fila[4] !== null) preciosPorPasajero[5] = fila[4];
+    try {
+      const res = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(apart)}`);
+      const ocupadasData = await res.json();
+      
+      // Extrae el arreglo de fechas bloqueadas
+      const fechasBloqueadas = ocupadasData.slice(1).map(item => item[0]);
 
-    if (Object.keys(preciosPorPasajero).length > 0) {
-      listaPrecios[nombreApart] = preciosPorPasajero;
-    }
-  }
-
-  return listaPrecios;
-}
-
-function decodificarFechaSegura(valor) {
-  if (!valor) return null;
-  if (valor instanceof Date) return valor;
-  
-  const str = String(valor).trim();
-  if (str.includes("-")) {
-    const partes = str.split("T")[0].split("-");
-    if (partes.length === 3) {
-      return new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
-    }
-  }
-  if (str.includes("/")) {
-    const partes = str.split(" ")[0].split("/");
-    if (partes.length === 3) {
-      return new Date(parseInt(partes[2]), parseInt(partes[1]) - 1, parseInt(partes[0]));
-    }
-  }
-  return new Date(valor);
-}
-
-function obtenerFechasOcupadas(nombreHoja) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(nombreHoja);
-  const fechasBloqueadas = [["fecha"]]; 
-  
-  if (!sheet) return fechasBloqueadas;
-
-  const datos = sheet.getDataRange().getValues();
-  
-  for (let i = 1; i < datos.length; i++) {
-    const fila = datos[i];
-    const estado = fila[1] ? fila[1].toString().toLowerCase() : "";
-    
-    const checkin = decodificarFechaSegura(fila[5]); 
-    const checkout = decodificarFechaSegura(fila[6]); 
-    
-    if (estado.includes("cancelad") || estado.includes("rechazad")) continue;
-
-    if (checkin && checkout && !isNaN(checkin.getTime()) && !isNaN(checkout.getTime())) {
-      let actual = new Date(checkin.getTime());
-      while (actual < checkout) {
-        const iso = Utilities.formatDate(actual, "America/Argentina/Buenos_Aires", "yyyy-MM-dd");
-        fechasBloqueadas.push([iso]);
-        actual.setDate(actual.getDate() + 1);
+      if (flatpickrInstancia) {
+        flatpickrInstancia.destroy();
       }
+
+      flatpickrInstancia = flatpickr("#rangoFechas", {
+        mode: "range",
+        locale: "es",
+        dateFormat: "Y-m-d",
+        showMonths: 2, // Muestra 2 meses para facilitar reservas cruzadas (ej. 28 al 02)
+        minDate: "today",
+        disable: fechasBloqueadas,
+        onChange: function(selectedDates, dateStr, instance) {
+          if (selectedDates.length === 2) {
+            const checkin = selectedDates[0];
+            const checkout = selectedDates[1];
+
+            // Formato DD/MM/YYYY para Google Sheets
+            checkinSeleccionado = flatpickr.formatDate(checkin, "d/m/Y");
+            checkoutSeleccionado = flatpickr.formatDate(checkout, "d/m/Y");
+
+            const diffTime = Math.abs(checkout - checkin);
+            nochesCalculadas = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            calcularMontoTotal();
+          } else {
+            resetearTotales();
+          }
+        }
+      });
+
+      inputFechas.disabled = false;
+    } catch (error) {
+      console.error("Error cargando disponibilidad:", error);
     }
   }
-  
-  return fechasBloqueadas;
-}
+
+  // 4. Recalcular Monto al cambiar Pax o Moneda
+  document.getElementById("pasajeros").addEventListener("change", calcularMontoTotal);
+  document.getElementById("moneda").addEventListener("change", function() {
+    document.getElementById("monedaText").textContent = this.value;
+    calcularMontoTotal();
+  });
+
+  function calcularMontoTotal() {
+    const apart = document.getElementById("bungalow").value;
+    const pax = document.getElementById("pasajeros").value;
+    const btnPagar = document.getElementById("btnPagar");
+
+    if (apart && pax && nochesCalculadas > 0 && mapaTarifas[apart][pax]) {
+      const precioPorNoche = mapaTarifas[apart][pax];
+      totalCalculado = precioPorNoche * nochesCalculadas;
+
+      document.getElementById("cantNoches").textContent = nochesCalculadas;
+      document.getElementById("montoTotalText").textContent = "$" + totalCalculado.toLocaleString("es-AR");
+      btnPagar.disabled = false;
+    } else {
+      btnPagar.disabled = true;
+    }
+  }
+
+  function resetearTotales() {
+    nochesCalculadas = 0;
+    totalCalculado = 0;
+    document.getElementById("cantNoches").textContent = "0";
+    document.getElementById("montoTotalText").textContent = "$0";
+    document.getElementById("btnPagar").disabled = true;
+  }
+
+  // 5. Envío del Formulario a la API
+  document.getElementById("formReserva").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    const btnPagar = document.getElementById("btnPagar");
+    btnPagar.disabled = true;
+    btnPagar.textContent = "Procesando...";
+
+    const payload = {
+      bungalow: document.getElementById("bungalow").value,
+      pasajeros: document.getElementById("pasajeros").value,
+      checkin: checkinSeleccionado,
+      checkout: checkoutSeleccionado,
+      noches: nochesCalculadas,
+      montoTotal: totalCalculado,
+      moneda: document.getElementById("moneda").value,
+      nombre: document.getElementById("nombre").value,
+      apellido: document.getElementById("apellido").value,
+      contacto: document.getElementById("contacto").value
+    };
+
+    try {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      const res = await response.json();
+
+      if (res.status === "success") {
+        if (payload.moneda === "ARS" && res.init_point) {
+          window.location.href = res.init_point; // Redirige a Mercado Pago
+        } else {
+          alert("¡Reserva registrada con éxito!");
+          location.reload();
+        }
+      } else {
+        alert("Error en la reserva: " + res.message);
+        btnPagar.disabled = false;
+        btnPagar.textContent = "Procesar Reserva";
+      }
+    } catch (err) {
+      alert("Ocurrió un error al procesar el pago.");
+      console.error(err);
+      btnPagar.disabled = false;
+      btnPagar.textContent = "Procesar Reserva";
+    }
+  });
+
+  // Inicio
+  cargarTarifas();
+</script>
+
+</body>
+</html>

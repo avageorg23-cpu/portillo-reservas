@@ -10,7 +10,10 @@
   
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
-    .booking-card { max-width: 480px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+    
+    /* AGRANDAMOS EL CONTENEDOR A 650px PARA QUE QUEPAN LOS 2 MESES LADO A LADO */
+    .booking-card { max-width: 650px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+    
     h2 { text-align: center; color: #1a365d; margin-top: 0; }
     .form-group { margin-bottom: 15px; }
     label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.9em; }
@@ -21,6 +24,11 @@
     .btn-pay { width: 100%; background-color: #2b6cb0; color: white; border: none; padding: 12px; font-size: 1.1em; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 15px; transition: background 0.2s; }
     .btn-pay:hover { background-color: #2c5282; }
     .btn-pay:disabled { background-color: #cbd5e0; cursor: not-allowed; }
+
+    /* Estilo para ajustar el calendario doble en pantallas pequeñas */
+    .flatpickr-calendar.hasWeeks, .flatpickr-calendar.hasTime {
+      width: auto !important;
+    }
   </style>
 </head>
 <body>
@@ -54,7 +62,7 @@
       </select>
     </div>
 
-    <!-- FECHAS (2 Meses visibles para cruce de mes) -->
+    <!-- FECHAS (2 Meses visibles) -->
     <div class="form-group">
       <label for="fechas">Check-in / Check-out:</label>
       <input type="text" id="fechas" placeholder="Seleccione el rango de fechas" required disabled>
@@ -92,7 +100,7 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
 
 <script>
-  // ATENCIÓN: Poner aquí la URL desplegada de tu Google Apps Script
+  // Reemplaza con la URL de tu Web App desplegada en Google Apps Script
   const APPS_SCRIPT_URL = "REEMPLAZAR_CON_TU_URL_DE_APPS_SCRIPT";
 
   let preciosMatrix = {};
@@ -102,7 +110,6 @@
   let totalNoches = 0;
   let montoCalculado = 0;
 
-  // 1. Cargar la matriz de precios desde la pestaña TARIFAS
   async function initMotor() {
     try {
       const resp = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
@@ -123,7 +130,6 @@
     }
   }
 
-  // 2. Al seleccionar el departamento, habilitar los pasajeros correspondientes
   document.getElementById("bungalow").addEventListener("change", async function() {
     const apart = this.value;
     const selectPax = document.getElementById("pasajeros");
@@ -138,7 +144,6 @@
       return;
     }
 
-    // Filtra y crea solo las opciones de pasajeros configuradas en TARIFAS
     const opcionesPax = preciosMatrix[apart];
     selectPax.innerHTML = '<option value="">-- Cantidad de Personas --</option>';
 
@@ -153,7 +158,6 @@
     await prepararCalendarioFechas(apart);
   });
 
-  // 3. Cargar fechas ocupadas y configurar calendario en vista de 2 meses
   async function prepararCalendarioFechas(apart) {
     const inputFechas = document.getElementById("fechas");
     inputFechas.disabled = true;
@@ -170,7 +174,8 @@
         mode: "range",
         locale: "es",
         dateFormat: "Y-m-d",
-        showMonths: 2, // Permite ver 2 meses simultáneos para reservas cruzadas (ej: 28 al 02)
+        showMonths: 2,         // Muestra 2 meses en simultáneo
+        disableMobile: true,   // FORZA a mostrar la UI de 2 meses en móviles y pantallas táctiles
         minDate: "today",
         disable: fechasBloqueadas,
         onChange: function(selectedDates) {
@@ -197,7 +202,6 @@
     }
   }
 
-  // 4. Cambios en Pax o Moneda
   document.getElementById("pasajeros").addEventListener("change", recalcularTotales);
   document.getElementById("moneda").addEventListener("change", function() {
     const monedaSel = this.value;
@@ -231,7 +235,6 @@
     document.getElementById("btnPagar").disabled = true;
   }
 
-  // 5. Envío de datos al Apps Script
   document.getElementById("reservaForm").addEventListener("submit", async function(e) {
     e.preventDefault();
     const btnPagar = document.getElementById("btnPagar");
@@ -279,7 +282,6 @@
     }
   });
 
-  // Ejecutar al cargar la página
   initMotor();
 </script>
 

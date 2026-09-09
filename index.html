@@ -208,17 +208,17 @@
   const TIPO_CAMBIO_USD = 1000; 
 
   const preciosFallback = {
-    "Apart 1": { "2": 53000 },
-    "Apart 2": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
-    "Apart 3": { "2": 60000 },
-    "Apart 4": { "2": 63000 },
-    "Apart 6": { "2": 60000 },
-    "Apart 11": { "2": 53000 },
-    "Apart 12": { "2": 65000, "3": 85000, "4": 100000, "5": 110000 },
-    "Apart 14": { "2": 58000 },
-    "Apart 15": { "2": 63000, "3": 80000, "4": 95000 },
-    "Apart 16": { "2": 56000 },
-    "Apart 17": { "2": 57000 }
+    "Apart 1": { 2: 53000 },
+    "Apart 2": { 2: 65000, 3: 85000, 4: 100000, 5: 110000 },
+    "Apart 3": { 2: 60000 },
+    "Apart 4": { 2: 63000 },
+    "Apart 6": { 2: 60000 },
+    "Apart 11": { 2: 53000 },
+    "Apart 12": { 2: 65000, 3: 85000, 4: 100000, 5: 110000 },
+    "Apart 14": { 2: 58000 },
+    "Apart 15": { 2: 63000, 3: 80000, 4: 95000 },
+    "Apart 16": { 2: 56000 },
+    "Apart 17": { 2: 57000 }
   };
 
   let preciosDinámicos = JSON.parse(JSON.stringify(preciosFallback)); 
@@ -273,17 +273,19 @@
 
   function obtenerPrecioBase() {
     const room = document.getElementById("bungalow").value;
-    const pax = document.getElementById("pasajeros").value;
+    const pax = Number(document.getElementById("pasajeros").value);
     
     if (!preciosDinámicos[room]) return 0;
 
     let precio = preciosDinámicos[room][pax];
     if (!precio) {
-      const capacidades = Object.keys(preciosDinámicos[room]);
-      const maxCapacidad = Math.max(...capacidades);
-      precio = preciosDinámicos[room][maxCapacidad];
+      const capacidades = Object.keys(preciosDinámicos[room]).map(Number);
+      if (capacidades.length > 0) {
+        const maxCapacidad = Math.max(...capacidades);
+        precio = preciosDinámicos[room][maxCapacidad];
+      }
     }
-    return precio;
+    return precio || 0;
   }
 
   function updatePriceLine(){
@@ -408,7 +410,6 @@
     }
   }
 
-  // GENERADOR INDIVIDUAL DE TABLA POR MES
   function generarTablaMes(dateObj, occupied) {
     const year = dateObj.getFullYear();
     const month = dateObj.getMonth();
@@ -458,7 +459,6 @@
     return block;
   }
 
-  // RENDERIZA 2 MESES SEGUIDOS
   async function loadAvailabilityData(){
     const room = document.getElementById("bungalow").value;
     const container = document.getElementById("calendar-container");
@@ -466,11 +466,9 @@
     
     let occupied = occupiedCache.get(room) || new Set();
 
-    // Mes 1
     const mes1Block = generarTablaMes(currentDate, occupied);
     container.appendChild(mes1Block);
 
-    // Mes 2
     const nextDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
     const mes2Block = generarTablaMes(nextDate, occupied);
     container.appendChild(mes2Block);

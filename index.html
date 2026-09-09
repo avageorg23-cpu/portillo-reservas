@@ -204,7 +204,7 @@
   </div>
 
 <script>
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwH61JMbyMvV2lg2WQ2hPmCFwbAWcEQtWQAPoGBcTCTVpX-3in2aIIqNB1xTEkg02Q2ig/exec";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzWKTcUMSumcydEvueO3YnjOp8lrUrimkbLt25_iaW3ra1XymWNuBh631C-HfJtwngGeQ/exec";
   const TIPO_CAMBIO_USD = 1000; 
 
   const preciosFallback = {
@@ -317,7 +317,7 @@
 
   async function cargarPreciosDesdeSheet() {
     try {
-      const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios`);
+      const response = await fetch(`${APPS_SCRIPT_URL}?action=getPrecios&t=${Date.now()}`);
       const data = await response.json();
       
       if (data && Object.keys(data).length > 0) {
@@ -394,7 +394,7 @@
       return occupiedCache.get(room);
     }
     try {
-      const r = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(room)}`, { cache: "no-store" });
+      const r = await fetch(`${APPS_SCRIPT_URL}?action=getDispo&room=${encodeURIComponent(room)}&t=${Date.now()}`, { cache: "no-store" });
       const rows = await r.json();
       const occupied = new Set();
       for (let i = 1; i < rows.length; i++){
